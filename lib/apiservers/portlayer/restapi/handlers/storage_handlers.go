@@ -83,7 +83,7 @@ func (h *StorageHandlersImpl) Configure(api *operations.PortLayerAPI, handlerCtx
 
 	api.StorageCreateImageStoreHandler = storage.CreateImageStoreHandlerFunc(h.CreateImageStore)
 	api.StorageGetImageHandler = storage.GetImageHandlerFunc(h.GetImage)
-	api.StorageGetImageTarHandler = storage.GetImageTarHandlerFunc(h.GetImageTar)
+	api.StorageGetLayerTarHandler = storage.GetLayerTarHandlerFunc(h.GetLayerTar)
 	api.StorageListImagesHandler = storage.ListImagesHandlerFunc(h.ListImages)
 	api.StorageWriteImageHandler = storage.WriteImageHandlerFunc(h.WriteImage)
 	api.StorageDeleteImageHandler = storage.DeleteImageHandlerFunc(h.DeleteImage)
@@ -237,9 +237,35 @@ func (h *StorageHandlersImpl) DeleteImage(params storage.DeleteImageParams) midd
 	return storage.NewDeleteImageOK().WithPayload(result)
 }
 
-// GetImageTar returns an image tar file
-func (h *StorageHandlersImpl) GetImageTar(params storage.GetImageTarParams) middleware.Responder {
-	return middleware.NotImplemented("operation storage.GetImageTar has not yet been implemented")
+// GetLayerTar returns an image tar file
+func (h *StorageHandlersImpl) GetLayerTar(params storage.GetLayerTarParams) middleware.Responder {
+
+	id := params.ID
+	ancestor := ""
+	if params.Ancestor != nil {
+		ancestor = *params.Ancestor
+	}
+
+	op := trace.NewOperation(context.Background(), fmt.Sprintf("GetLayerTar (%s, %s)", id, ancestor))
+
+	store, _ := util.ImageStoreNameToURL(params.StoreName)
+	data := params.Data
+
+	r, err := h.imageCache.Export(op, store, id, ancestor, nil, data)
+	if err != nil {
+		return storage.NewGetLayerTarDefault(http.StatusInternalServerError).WithPayload(&models.Error{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+	}
+
+	// s := sha256.New()
+	// _, _ = io.Copy(s, r)
+	// sum := s.Sum(nil)
+	// op.Infof("\n\n\nSum: %s", fmt.Sprintf("%x", sum))
+
+	detachableOut := NewFlushingReader(r)
+	return NewStreamOutputHandler("imageTar").WithPayload(detachableOut, id, nil)
 }
 
 // ListImages returns a list of images in a store

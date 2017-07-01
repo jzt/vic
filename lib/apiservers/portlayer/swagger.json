@@ -442,12 +442,12 @@
 		},
 		"/storage/{store_name}/tar/{id}": {
 			"get": {
-				"description": "Get an image by id in an image store as a tar file",
-				"summary": "Get an image as a tar file",
+				"description": "Get a layer by id as a tar file",
+				"summary": "Get a layer as a tar file",
 				"tags": [
 					"storage"
 				],
-				"operationId": "GetImageTar",
+				"operationId": "GetLayerTar",
 				"parameters": [
 					{
 						"name": "store_name",
@@ -459,6 +459,18 @@
 						"name": "id",
 						"type": "string",
 						"in": "path",
+						"required": true
+					},
+					{
+						"name": "ancestor",
+						"type": "string",
+						"in": "query",
+						"required": false
+					},
+					{
+						"name": "data",
+						"type": "boolean",
+						"in": "query",
 						"required": true
 					}
 				],

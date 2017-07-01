@@ -32,6 +32,7 @@ package backends
 //		- Please USE the aliased docker error package 'derr'
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -73,6 +74,7 @@ import (
 	"github.com/vmware/vic/lib/apiservers/portlayer/client/storage"
 	"github.com/vmware/vic/lib/apiservers/portlayer/client/tasks"
 	"github.com/vmware/vic/lib/apiservers/portlayer/models"
+	"github.com/vmware/vic/lib/imagec"
 	"github.com/vmware/vic/lib/metadata"
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/sys"
@@ -94,6 +96,7 @@ type VicContainerProxy interface {
 	CommitContainerHandle(handle, containerID string, waitTime int32) error
 	StreamContainerLogs(name string, out io.Writer, started chan struct{}, showTimestamps bool, followLogs bool, since int64, tailLines int64) error
 	StreamContainerStats(ctx context.Context, config *convert.ContainerStatsConfig) error
+	GetContainerChanges(vc *viccontainer.VicContainer, out io.Writer) error
 
 	Stop(vc *viccontainer.VicContainer, name string, seconds *int, unbound bool) error
 	State(vc *viccontainer.VicContainer) (*types.ContainerState, error)
@@ -670,6 +673,58 @@ func (c *ContainerProxy) StreamContainerStats(ctx context.Context, config *conve
 			return InternalServerError(fmt.Sprintf("Unknown error from the interaction port layer: %s", err))
 		}
 	}
+	return nil
+}
+
+func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer, out io.Writer) error {
+	layer, err := imagec.LayerCache().Get(vc.LayerID)
+	switch err.(type) {
+	case imagec.LayerNotFoundError:
+		return NotFoundError(layer.Parent)
+	}
+
+	// TODO(jzt): figure out how to get container r/w layer ID here
+	for layer.Size == 0 {
+		layer, err = imagec.LayerCache().Get(layer.Parent)
+		switch err.(type) {
+		case imagec.LayerNotFoundError:
+			return NotFoundError(layer.Parent)
+		}
+	}
+	id := layer.ID
+	parent := layer.Parent
+
+	host, err := sys.UUID()
+	if err != nil {
+		return InternalServerError("Failed to determine host UUID")
+	}
+
+	params := &storage.GetLayerTarParams{
+		Context:   context.Background(),
+		ID:        id,
+		Ancestor:  &parent,
+		Data:      false,
+		StoreName: host,
+	}
+
+	w := bytes.NewBuffer([]byte{})
+	_, err = c.client.Storage.GetLayerTar(params, w)
+	if err != nil {
+		switch err := err.(type) {
+		case *storage.GetLayerTarNotFound:
+			return NotFoundError(vc.ContainerID)
+		default:
+			//Check for EOF.  Since the connection, transport, and data handling are
+			//encapsulated inside of Swagger, we can only detect EOF by checking the
+			//error string
+			if strings.Contains(err.Error(), swaggerSubstringEOF) {
+				return nil
+			}
+			return InternalServerError(
+				fmt.Sprintf("Error streaming tar file: %s", err.Error()))
+		}
+	}
+
 	return nil
 }
 
