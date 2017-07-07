@@ -57,6 +57,8 @@ func Diff(op trace.Operation, newDir, oldDir string, spec *FilterSpec, data bool
 
 	sort.Sort(changesByPath(changes))
 
+	op.Infof("Changes: %#v", changes)
+
 	return Tar(op, newDir, changes, spec, data)
 }
 

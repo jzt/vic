@@ -32,8 +32,10 @@ package backends
 //		- Please USE the aliased docker error package 'derr'
 
 import (
-	"bytes"
+	"archive/tar"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -74,6 +76,7 @@ import (
 	"github.com/vmware/vic/lib/apiservers/portlayer/client/storage"
 	"github.com/vmware/vic/lib/apiservers/portlayer/client/tasks"
 	"github.com/vmware/vic/lib/apiservers/portlayer/models"
+	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/imagec"
 	"github.com/vmware/vic/lib/metadata"
 	"github.com/vmware/vic/pkg/trace"
@@ -96,7 +99,7 @@ type VicContainerProxy interface {
 	CommitContainerHandle(handle, containerID string, waitTime int32) error
 	StreamContainerLogs(name string, out io.Writer, started chan struct{}, showTimestamps bool, followLogs bool, since int64, tailLines int64) error
 	StreamContainerStats(ctx context.Context, config *convert.ContainerStatsConfig) error
-	GetContainerChanges(vc *viccontainer.VicContainer, out io.Writer) error
+	ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.Reader, error)
 
 	Stop(vc *viccontainer.VicContainer, name string, seconds *int, unbound bool) error
 	State(vc *viccontainer.VicContainer) (*types.ContainerState, error)
@@ -105,6 +108,8 @@ type VicContainerProxy interface {
 	Resize(id string, height, width int32) error
 	Rename(vc *viccontainer.VicContainer, newName string) error
 	AttachStreams(ctx context.Context, ac *AttachConfig, stdin io.ReadCloser, stdout, stderr io.Writer) error
+
+	GetContainerChanges(vc *viccontainer.VicContainer) (io.Reader, error)
 
 	Handle(id, name string) (string, error)
 	Client() *client.PortLayer
@@ -139,6 +144,10 @@ type AttachConfig struct {
 	// For example, this would close the attached container's stdin.
 	CloseStdin bool
 }
+
+var (
+	bsc = runtime.ByteStreamConsumer()
+)
 
 const (
 	attachConnectTimeout  time.Duration = 15 * time.Second //timeout for the connection
@@ -676,11 +685,11 @@ func (c *ContainerProxy) StreamContainerStats(ctx context.Context, config *conve
 	return nil
 }
 
-func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer, out io.Writer) error {
+func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer) (io.Reader, error) {
 	layer, err := imagec.LayerCache().Get(vc.LayerID)
 	switch err.(type) {
 	case imagec.LayerNotFoundError:
-		return NotFoundError(layer.Parent)
+		return nil, NotFoundError(layer.Parent)
 	}
 
 	// TODO(jzt): figure out how to get container r/w layer ID here
@@ -688,44 +697,84 @@ func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer, out 
 		layer, err = imagec.LayerCache().Get(layer.Parent)
 		switch err.(type) {
 		case imagec.LayerNotFoundError:
-			return NotFoundError(layer.Parent)
+			return nil, NotFoundError(layer.Parent)
 		}
 	}
 	id := layer.ID
 	parent := layer.Parent
 
+	log.Infof("Getting diff for %s and %s", id, parent)
+
 	host, err := sys.UUID()
 	if err != nil {
-		return InternalServerError("Failed to determine host UUID")
+		return nil, InternalServerError("Failed to determine host UUID")
 	}
 
-	params := &storage.GetLayerTarParams{
-		Context:   context.Background(),
-		ID:        id,
-		Ancestor:  &parent,
-		Data:      false,
-		StoreName: host,
-	}
-
-	w := bytes.NewBuffer([]byte{})
-	_, err = c.client.Storage.GetLayerTar(params, w)
+	r, err := c.ArchiveExportReader(context.Background(), host, host, id, parent, false, archive.FilterSpec{})
 	if err != nil {
-		switch err := err.(type) {
-		case *storage.GetLayerTarNotFound:
-			return NotFoundError(vc.ContainerID)
-		default:
-			//Check for EOF.  Since the connection, transport, and data handling are
-			//encapsulated inside of Swagger, we can only detect EOF by checking the
-			//error string
-			if strings.Contains(err.Error(), swaggerSubstringEOF) {
-				return nil
-			}
-			return InternalServerError(
-				fmt.Sprintf("Error streaming tar file: %s", err.Error()))
-		}
+		return nil, InternalServerError(err.Error())
 	}
 
-	return nil
+	if r == nil {
+		log.Infof("\n\n\nReader was nil!")
+	}
+	return r, nil
+}
+
+// ArchiveExportReader streams a tar archive from the portlayer.  Once the stream is complete,
+// an io.Reader is returned and the caller can use that reader to parse the data.
+func (c *ContainerProxy) ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.Reader, error) {
+	defer trace.End(trace.Begin(deviceID))
+
+	plClient, transport := c.createNewAttachClientWithTimeouts(attachConnectTimeout, 0, attachAttemptTimeout)
+	defer transport.Close()
+
+	var err error
+
+	pipeReader, pipeWriter := io.Pipe()
+
+	go func() {
+		params := storage.NewExportArchiveParamsWithContext(ctx).
+			WithStore(store).
+			WithAncestorStore(&ancestorStore).
+			WithDeviceID(deviceID).
+			WithAncestor(&ancestor).
+			WithData(data)
+
+		// Encode the filter spec
+		encodedFilter := ""
+		if valueBytes, merr := json.Marshal(filterSpec); merr == nil {
+			encodedFilter = base64.StdEncoding.EncodeToString(valueBytes)
+			params = params.WithFilterSpec(&encodedFilter)
+			log.Infof(" encodedFilter = %s", encodedFilter)
+		}
+
+		_, err = plClient.Storage.ExportArchive(params, pipeWriter)
+		log.Infof("Call to PL Client returned")
+		if err != nil {
+			log.Infof("Got error, inspecting: %s", err.Error())
+			log.Info("Error info: %#v", err)
+			switch err := err.(type) {
+			case *storage.ExportArchiveInternalServerError:
+				plErr := InternalServerError(fmt.Sprintf("Server error from archive reader for device %s", deviceID))
+				log.Errorf(plErr.Error())
+				pipeWriter.CloseWithError(plErr)
+			case *storage.ImportArchiveLocked:
+				plErr := ResourceLockedError(fmt.Sprintf("Resource locked for device %s", deviceID))
+				log.Errorf(plErr.Error())
+				pipeWriter.CloseWithError(plErr)
+			default:
+				//Check for EOF.  Since the connection, transport, and data handling are
+				//encapsulated inside of Swagger, we can only detect EOF by checking the
+				//error string
+				if strings.Contains(err.Error(), swaggerSubstringEOF) {
+					log.Infof("swagger error %s", err.Error())
+				}
+			}
+		}
+	}()
+
+	return pipeReader, nil
 }
 
 // Stop will stop (shutdown) a VIC container.
@@ -971,6 +1020,9 @@ func (c *ContainerProxy) createNewAttachClientWithTimeouts(connectTimeout, respo
 
 	plClient := client.New(r, nil)
 	r.Consumers["application/octet-stream"] = runtime.ByteStreamConsumer()
+	r.Consumers["application/x-tar"] = runtime.ConsumerFunc(func(rdr io.Reader, data interface{}) error {
+		return bsc.Consume(tar.NewReader(rdr), data)
+	})
 	r.Producers["application/octet-stream"] = runtime.ByteStreamProducer()
 
 	return plClient, transport

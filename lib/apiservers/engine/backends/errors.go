@@ -72,6 +72,11 @@ func NotFoundError(msg string) error {
 	return derr.NewRequestNotFoundError(fmt.Errorf("No such container: %s", msg))
 }
 
+// ResourceLockedError returns a 423 http status
+func ResourceLockedError(msg string) error {
+	return derr.NewErrorWithStatusCode(fmt.Errorf("Resource locked: %s", msg), http.StatusLocked)
+}
+
 // InternalServerError returns a 500 docker error on a portlayer error.
 func InternalServerError(msg string) error {
 	return derr.NewErrorWithStatusCode(fmt.Errorf("Server error from portlayer: %s", msg), http.StatusInternalServerError)

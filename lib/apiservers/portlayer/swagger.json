@@ -175,6 +175,163 @@
 				}
 			}
 		},
+    "/archive": {
+          "get": {
+              "description": "Exports a tar archive from the target device.",
+				      "summary": "Export tar archive from supplied target",
+				      "tags": [
+					        "storage"
+				      ],
+				      "consumes": [
+					        "application/json"
+				      ],
+				      "produces": [
+					        "application/x-tar"
+				      ],
+				      "operationId": "ExportArchive",
+				      "parameters": [
+						{
+							"name": "store",
+							"in":"query",
+							"required":true,
+							"type" : "string",
+							"x-nullable": false
+						},
+						{
+							"name": "ancestorStore",
+							"in":"query",
+							"required": false,
+							"type" : "string",
+							"x-nullable": false
+						},
+						{
+							"name":"deviceID",
+							"in":"query",
+							"required": true,
+							"type" : "string",
+							"x-nullable": false
+						},
+						{
+							"name":"ancestor",
+							"in":"query",
+							"required": false,
+							"type" : "string",
+							"x-nullable": false
+						},
+						{
+							"name":"data",
+							"in":"query",
+							"required": true,
+							"type" : "boolean",
+							"x-nullable": false
+						},
+						{
+							"name":"filterSpec",
+							"in":"query",
+							"required": false,
+							"type" : "string",
+							"x-nullable": true
+						}
+					],
+					"responses": {
+						"200": {
+							"description": "OK",
+							"schema": {
+								"format": "binary"
+							}
+						},
+					"404" : {
+						"description": "Supplied target not found",
+						"schema": {
+							"$ref": "#/definitions/Error"
+						}
+					},
+					"423": {
+						"description": "Device or resource is locked",
+						"schema": {
+							"$ref": "#/definitions/Error"
+						}
+					},
+					"500": {
+						"description": "failed to export tar archive from target"
+					},
+					"default": {
+						"description": "error",
+						"schema": {
+							"$ref": "#/definitions/Error"
+						}
+					}
+				}
+          },
+      "post": {
+          "description": "Imports a tar stream to a device at the target path",
+				  "summary": "Import tar stream to supplied target",
+				  "tags": [
+					        "storage"
+				  ],
+				  "consumes": [
+					    "application/x-tar"
+				  ],
+				  "operationId": "ImportArchive",
+				  "parameters": [
+					{
+						"name": "store",
+						"in":"query",
+						"type" : "string",
+						"x-nullable": false
+					},
+					{
+						"name":"deviceID",
+						"in":"query",
+						"required": true,
+						"type" : "string",
+						"x-nullable": false
+					},
+					{
+						"name":"filterSpec",
+						"in":"query",
+						"required": false,
+						"type" : "string",
+						"x-nullable": true
+					},
+					{
+						"name": "Archive",
+						"required": true,
+						"in": "body",
+						"schema": {
+							"type":"string",
+							"format":"binary"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					},
+					"404" : {
+						"description": "Supplied target not found",
+						"schema": {
+							"$ref": "#/definitions/Error"
+						}
+					},
+					"423": {
+						"description": "Device or resource is locked",
+						"schema": {
+							"$ref": "#/definitions/Error"
+						}
+					},
+					"500": {
+						"description": "failed to export tar archive from target"
+					},
+					"default": {
+						"description": "error",
+						"schema": {
+							"$ref": "#/definitions/Error"
+						}
+					}
+				}
+			}
+		},
 		"/storage": {
 			"post": {
 				"description": "Creates a location to store images",
@@ -430,60 +587,6 @@
 						"schema": {
 							"$ref": "#/definitions/Error"
 						}
-					},
-					"default": {
-						"description": "error",
-						"schema": {
-							"$ref": "#/definitions/Error"
-						}
-					}
-				}
-			}
-		},
-		"/storage/{store_name}/tar/{id}": {
-			"get": {
-				"description": "Get a layer by id as a tar file",
-				"summary": "Get a layer as a tar file",
-				"tags": [
-					"storage"
-				],
-				"operationId": "GetLayerTar",
-				"parameters": [
-					{
-						"name": "store_name",
-						"type": "string",
-						"in": "path",
-						"required": true
-					},
-					{
-						"name": "id",
-						"type": "string",
-						"in": "path",
-						"required": true
-					},
-					{
-						"name": "ancestor",
-						"type": "string",
-						"in": "query",
-						"required": false
-					},
-					{
-						"name": "data",
-						"type": "boolean",
-						"in": "query",
-						"required": true
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"type": "string",
-							"format": "binary"
-						}
-					},
-					"404": {
-						"description": "Not found"
 					},
 					"default": {
 						"description": "error",

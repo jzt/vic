@@ -83,7 +83,6 @@ func (h *StorageHandlersImpl) Configure(api *operations.PortLayerAPI, handlerCtx
 
 	api.StorageCreateImageStoreHandler = storage.CreateImageStoreHandlerFunc(h.CreateImageStore)
 	api.StorageGetImageHandler = storage.GetImageHandlerFunc(h.GetImage)
-	api.StorageGetLayerTarHandler = storage.GetLayerTarHandlerFunc(h.GetLayerTar)
 	api.StorageListImagesHandler = storage.ListImagesHandlerFunc(h.ListImages)
 	api.StorageWriteImageHandler = storage.WriteImageHandlerFunc(h.WriteImage)
 	api.StorageDeleteImageHandler = storage.DeleteImageHandlerFunc(h.DeleteImage)
@@ -94,6 +93,8 @@ func (h *StorageHandlersImpl) Configure(api *operations.PortLayerAPI, handlerCtx
 	api.StorageVolumeJoinHandler = storage.VolumeJoinHandlerFunc(h.VolumeJoin)
 	api.StorageListVolumesHandler = storage.ListVolumesHandlerFunc(h.VolumesList)
 	api.StorageGetVolumeHandler = storage.GetVolumeHandlerFunc(h.GetVolume)
+
+	api.StorageExportArchiveHandler = storage.ExportArchiveHandlerFunc(h.ExportArchive)
 }
 
 func (h *StorageHandlersImpl) configureVolumeStores(op trace.Operation, handlerCtx *HandlerContext) {
@@ -235,37 +236,6 @@ func (h *StorageHandlersImpl) DeleteImage(params storage.DeleteImageParams) midd
 	}
 
 	return storage.NewDeleteImageOK().WithPayload(result)
-}
-
-// GetLayerTar returns an image tar file
-func (h *StorageHandlersImpl) GetLayerTar(params storage.GetLayerTarParams) middleware.Responder {
-
-	id := params.ID
-	ancestor := ""
-	if params.Ancestor != nil {
-		ancestor = *params.Ancestor
-	}
-
-	op := trace.NewOperation(context.Background(), fmt.Sprintf("GetLayerTar (%s, %s)", id, ancestor))
-
-	store, _ := util.ImageStoreNameToURL(params.StoreName)
-	data := params.Data
-
-	r, err := h.imageCache.Export(op, store, id, ancestor, nil, data)
-	if err != nil {
-		return storage.NewGetLayerTarDefault(http.StatusInternalServerError).WithPayload(&models.Error{
-			Code:    http.StatusInternalServerError,
-			Message: err.Error(),
-		})
-	}
-
-	// s := sha256.New()
-	// _, _ = io.Copy(s, r)
-	// sum := s.Sum(nil)
-	// op.Infof("\n\n\nSum: %s", fmt.Sprintf("%x", sum))
-
-	detachableOut := NewFlushingReader(r)
-	return NewStreamOutputHandler("imageTar").WithPayload(detachableOut, id, nil)
 }
 
 // ListImages returns a list of images in a store
@@ -531,6 +501,32 @@ func (h *StorageHandlersImpl) VolumeJoin(params storage.VolumeJoinParams) middle
 
 	op.Infof("volume %s has been joined to a container", volume.ID)
 	return storage.NewVolumeJoinOK().WithPayload(actualHandle.String())
+}
+
+// ExportArchive takes an input tar archive and unpacks to destination
+func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) middleware.Responder {
+	defer trace.End(trace.Begin(""))
+
+	id := params.DeviceID
+	ancestor := ""
+	if params.Ancestor != nil {
+		ancestor = *params.Ancestor
+	}
+
+	op := trace.NewOperation(context.Background(), fmt.Sprintf("GetLayerTar (%s, %s)", id, ancestor))
+
+	store, _ := util.ImageStoreNameToURL(params.Store)
+	data := params.Data
+
+	r, err := h.imageCache.Export(op, store, id, ancestor, nil, data)
+	if err != nil {
+		return storage.NewExportArchiveInternalServerError()
+	}
+
+	detachableOut := NewFlushingReader(r)
+	defer log.Infof("Returned from ExportArchive!")
+
+	return NewStreamOutputHandler("ExportArchive").WithPayload(detachableOut, params.DeviceID, nil)
 }
 
 //utility functions
