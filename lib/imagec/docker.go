@@ -214,6 +214,10 @@ func FetchImageBlob(ctx context.Context, options Options, image *ImageWithMeta, 
 
 	// blobSum is the sha of the compressed layer
 	blobSum := sha256.New()
+	defer func() {
+		log.Infof("\n\n\nBlobsum: %x", blobSum)
+		log.Infof("\n\n\nDiffID: %x", diffID)
+	}()
 
 	// diffIDSum is the sha of the uncompressed layer
 	diffIDSum := sha256.New()

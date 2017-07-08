@@ -99,6 +99,10 @@ func SwarmNotSupportedError() error {
 	return derr.NewErrorWithStatusCode(fmt.Errorf("%s does not yet support Docker Swarm", ProductName()), http.StatusNotFound)
 }
 
+func StreamFormatNotRecognized() error {
+	return derr.NewRequestConflictError(fmt.Errorf("Stream format not recognized"))
+}
+
 // Error type check
 
 func IsNotFoundError(err error) bool {
@@ -116,6 +120,16 @@ func IsConflictError(err error) bool {
 	// if error was created with the docker error function, check the status code
 	if httpErr, ok := err.(httpStatusError); ok {
 		if httpErr.HTTPErrorStatusCode() == http.StatusConflict {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsResourceInUse(err error) bool {
+	if httpErr, ok := err.(httpStatusError); ok {
+		if httpErr.HTTPErrorStatusCode() == http.StatusLocked {
 			return true
 		}
 	}

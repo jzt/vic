@@ -15,8 +15,7 @@
 package backends
 
 import (
-	// "archive/tar"
-	"bytes"
+	"archive/tar"
 	"fmt"
 	"io"
 	"math/rand"
@@ -60,7 +59,7 @@ import (
 	"github.com/vmware/vic/lib/apiservers/portlayer/client/scopes"
 	"github.com/vmware/vic/lib/apiservers/portlayer/client/tasks"
 	"github.com/vmware/vic/lib/apiservers/portlayer/models"
-	// "github.com/vmware/vic/lib/archive"
+	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/metadata"
 	"github.com/vmware/vic/lib/portlayer/constants"
 	"github.com/vmware/vic/pkg/retry"
@@ -1330,45 +1329,34 @@ func (c *Container) ContainerChanges(name string) ([]docker.Change, error) {
 
 	changes := []docker.Change{}
 
-	buf := bytes.NewBuffer([]byte{})
-	_, err = io.Copy(buf, r)
-	if err != nil {
-		return nil, err
+	tarFile := tar.NewReader(r)
+
+	for {
+		hdr, err := tarFile.Next()
+		if err == io.EOF {
+			log.Infof("Got EOF!! BAILING")
+			break
+		}
+		if err != nil {
+			return []docker.Change{}, InternalServerError(err.Error())
+		}
+		log.Infof("Got header %s", hdr.Name)
+		change := docker.Change{
+			Path: hdr.Name,
+		}
+		switch hdr.Xattrs[archive.ChangeTypeKey] {
+		case "A":
+			change.Kind = docker.ChangeAdd
+		case "D":
+			change.Kind = docker.ChangeDelete
+		case "C":
+			change.Kind = docker.ChangeModify
+		default:
+			return []docker.Change{}, InternalServerError("Invalid change type")
+		}
+		changes = append(changes, change)
 	}
-
-	output := "/" + string(buf.Bytes())
-	log.Infof("Bytes: %s", output)
-
-	changes = append(changes, docker.Change{Path: output, Kind: docker.ChangeDelete})
-
-	// tarFile := tar.NewReader(r)
-
-	// for {
-	// 	hdr, err := tarFile.Next()
-	// 	if err == io.EOF {
-	// 		log.Infof("Got EOF!! BAILING")
-	// 		break
-	// 	}
-	// 	if err != nil {
-	// 		return []docker.Change{}, InternalServerError(err.Error())
-	// 	}
-	// 	log.Infof("Got header %s", hdr.Name)
-	// 	change := docker.Change{
-	// 		Path: hdr.Name,
-	// 	}
-	// 	switch hdr.Xattrs[archive.ChangeTypeKey] {
-	// 	case "A":
-	// 		change.Kind = docker.ChangeAdd
-	// 	case "D":
-	// 		change.Kind = docker.ChangeDelete
-	// 	case "C":
-	// 		change.Kind = docker.ChangeModify
-	// 	default:
-	// 		return []docker.Change{}, InternalServerError("Invalid change type")
-	// 	}
-	// 	changes = append(changes, change)
-	// }
-	// log.Infof("\t\t\tChanges: %#v", changes)
+	log.Infof("\t\t\tChanges: %#v", changes)
 	return changes, nil
 }
 

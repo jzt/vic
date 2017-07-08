@@ -16,7 +16,10 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +31,7 @@ import (
 	"github.com/vmware/vic/lib/apiservers/portlayer/models"
 	"github.com/vmware/vic/lib/apiservers/portlayer/restapi/operations"
 	"github.com/vmware/vic/lib/apiservers/portlayer/restapi/operations/storage"
+	vicarchive "github.com/vmware/vic/lib/archive"
 	epl "github.com/vmware/vic/lib/portlayer/exec"
 	spl "github.com/vmware/vic/lib/portlayer/storage"
 	"github.com/vmware/vic/lib/portlayer/storage/nfs"
@@ -503,7 +507,7 @@ func (h *StorageHandlersImpl) VolumeJoin(params storage.VolumeJoinParams) middle
 	return storage.NewVolumeJoinOK().WithPayload(actualHandle.String())
 }
 
-// ExportArchive takes an input tar archive and unpacks to destination
+// ExportArchive creates a tar archive and returns to caller
 func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) middleware.Responder {
 	defer trace.End(trace.Begin(""))
 
@@ -513,18 +517,52 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 		ancestor = *params.Ancestor
 	}
 
-	op := trace.NewOperation(context.Background(), fmt.Sprintf("GetLayerTar (%s, %s)", id, ancestor))
+	op := trace.NewOperation(context.Background(), fmt.Sprintf("ExportArchive (%s, %s)", id, ancestor))
 
 	store, _ := util.ImageStoreNameToURL(params.Store)
 	data := params.Data
 
-	r, err := h.imageCache.Export(op, store, id, ancestor, nil, data)
-	if err != nil {
-		return storage.NewExportArchiveInternalServerError()
+	var filterSpec vicarchive.FilterSpec
+	if params.FilterSpec != nil {
+		op.Infof("Filterspec: %s", *params.FilterSpec)
 	}
 
-	detachableOut := NewFlushingReader(r)
-	defer log.Infof("Returned from ExportArchive!")
+	if params.FilterSpec == nil || len(*params.FilterSpec) == 0 {
+		filterSpec = vicarchive.FilterSpec{
+			Inclusions: map[string]struct{}{},
+			Exclusions: map[string]struct{}{},
+		}
+	} else {
+		if decodedSpec, err := base64.StdEncoding.DecodeString(*params.FilterSpec); err == nil {
+			if len(decodedSpec) > 0 {
+				log.Infof("decoded spec = %s", string(decodedSpec))
+				if err = json.Unmarshal(decodedSpec, &filterSpec); err != nil {
+					log.Errorf("Unable to unmarshal decoded spec: %s", err)
+					return storage.NewImportArchiveInternalServerError()
+				}
+			} else {
+				log.Info("** filterSpec is empty")
+			}
+		}
+	}
+
+	// Return the data back to the caller
+	pipeReader, pipeWriter := io.Pipe()
+	go func() {
+
+		r, err := h.imageCache.Export(op, store, id, ancestor, &filterSpec, data)
+		if err != nil {
+			op.Errorf("")
+		}
+
+		n, err := io.Copy(pipeWriter, r)
+		if err != nil {
+			op.Errorf("Error streaming archive: %s", err.Error())
+		}
+		op.Infof("Copied %d bytes", n)
+		_ = pipeWriter.Close()
+	}()
+	detachableOut := NewFlushingReader(pipeReader)
 
 	return NewStreamOutputHandler("ExportArchive").WithPayload(detachableOut, params.DeviceID, nil)
 }

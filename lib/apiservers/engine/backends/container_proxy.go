@@ -33,6 +33,7 @@ package backends
 
 import (
 	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -97,9 +98,11 @@ type VicContainerProxy interface {
 	UnbindInteraction(handle string, name string, id string) (string, error)
 
 	CommitContainerHandle(handle, containerID string, waitTime int32) error
+	AttachStreams(ctx context.Context, ac *AttachConfig, stdin io.ReadCloser, stdout, stderr io.Writer) error
 	StreamContainerLogs(name string, out io.Writer, started chan struct{}, showTimestamps bool, followLogs bool, since int64, tailLines int64) error
 	StreamContainerStats(ctx context.Context, config *convert.ContainerStatsConfig) error
-	ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.Reader, error)
+
+	ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.ReadCloser, error)
 
 	Stop(vc *viccontainer.VicContainer, name string, seconds *int, unbound bool) error
 	State(vc *viccontainer.VicContainer) (*types.ContainerState, error)
@@ -107,7 +110,6 @@ type VicContainerProxy interface {
 	Signal(vc *viccontainer.VicContainer, sig uint64) error
 	Resize(id string, height, width int32) error
 	Rename(vc *viccontainer.VicContainer, newName string) error
-	AttachStreams(ctx context.Context, ac *AttachConfig, stdin io.ReadCloser, stdout, stderr io.Writer) error
 
 	GetContainerChanges(vc *viccontainer.VicContainer) (io.Reader, error)
 
@@ -701,7 +703,7 @@ func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer) (io.
 		}
 	}
 	id := layer.ID
-	parent := layer.Parent
+	parent := ""
 
 	log.Infof("Getting diff for %s and %s", id, parent)
 
@@ -710,23 +712,29 @@ func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer) (io.
 		return nil, InternalServerError("Failed to determine host UUID")
 	}
 
-	r, err := c.ArchiveExportReader(context.Background(), host, host, id, parent, false, archive.FilterSpec{})
+	spec := archive.FilterSpec{
+		Inclusions: map[string]struct{}{},
+		Exclusions: map[string]struct{}{},
+	}
+
+	r, err := c.ArchiveExportReader(context.Background(), host, host, id, parent, true, spec)
 	if err != nil {
 		return nil, InternalServerError(err.Error())
 	}
 
-	if r == nil {
-		log.Infof("\n\n\nReader was nil!")
-	}
 	return r, nil
 }
 
 // ArchiveExportReader streams a tar archive from the portlayer.  Once the stream is complete,
 // an io.Reader is returned and the caller can use that reader to parse the data.
-func (c *ContainerProxy) ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.Reader, error) {
+func (c *ContainerProxy) ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.ReadCloser, error) {
 	defer trace.End(trace.Begin(deviceID))
 
-	plClient, transport := c.createNewAttachClientWithTimeouts(attachConnectTimeout, 0, attachAttemptTimeout)
+	if store == "" || deviceID == "" {
+		return nil, fmt.Errorf("ArchiveExportReader called with either empty store or deviceID.  This is not allowed!")
+	}
+
+	plClient, transport := c.createGzipTarClient(attachConnectTimeout, 0, attachAttemptTimeout)
 	defer transport.Close()
 
 	var err error
@@ -747,13 +755,12 @@ func (c *ContainerProxy) ArchiveExportReader(ctx context.Context, store, ancesto
 			encodedFilter = base64.StdEncoding.EncodeToString(valueBytes)
 			params = params.WithFilterSpec(&encodedFilter)
 			log.Infof(" encodedFilter = %s", encodedFilter)
+		} else {
+			params = params.WithFilterSpec(nil)
 		}
 
 		_, err = plClient.Storage.ExportArchive(params, pipeWriter)
-		log.Infof("Call to PL Client returned")
 		if err != nil {
-			log.Infof("Got error, inspecting: %s", err.Error())
-			log.Info("Error info: %#v", err)
 			switch err := err.(type) {
 			case *storage.ExportArchiveInternalServerError:
 				plErr := InternalServerError(fmt.Sprintf("Server error from archive reader for device %s", deviceID))
@@ -769,8 +776,13 @@ func (c *ContainerProxy) ArchiveExportReader(ctx context.Context, store, ancesto
 				//error string
 				if strings.Contains(err.Error(), swaggerSubstringEOF) {
 					log.Infof("swagger error %s", err.Error())
+					pipeWriter.Close()
+				} else {
+					pipeWriter.CloseWithError(err)
 				}
 			}
+		} else {
+			pipeWriter.Close()
 		}
 	}()
 
@@ -1025,6 +1037,35 @@ func (c *ContainerProxy) createNewAttachClientWithTimeouts(connectTimeout, respo
 	})
 	r.Producers["application/octet-stream"] = runtime.ByteStreamProducer()
 
+	return plClient, transport
+}
+
+func (c *ContainerProxy) createGzipTarClient(connectTimeout, responseTimeout, responseHeaderTimeout time.Duration) (*client.PortLayer, *httpclient.Transport) {
+
+	r := rc.New(c.portlayerAddr, "/", []string{"http"})
+	transport := &httpclient.Transport{
+		ConnectTimeout:        connectTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+		RequestTimeout:        responseTimeout,
+	}
+
+	r.Transport = transport
+
+	plClient := client.New(r, nil)
+	r.Consumers["application/octet-stream"] = runtime.ByteStreamConsumer()
+	r.Producers["application/octet-stream"] = runtime.ByteStreamProducer()
+
+	r.Consumers["application/x-tgz"] = runtime.ConsumerFunc(func(rdr io.Reader, data interface{}) error {
+		bsc := runtime.ByteStreamConsumer()
+		gzReader, err := gzip.NewReader(tar.NewReader(rdr))
+		if err != nil {
+			return err
+		}
+		return bsc.Consume(gzReader, data)
+	})
+	r.Consumers["application/x-tar"] = runtime.ConsumerFunc(func(rdr io.Reader, data interface{}) error {
+		return bsc.Consume(tar.NewReader(rdr), data)
+	})
 	return plClient, transport
 }
 
