@@ -43,8 +43,9 @@ import (
 
 // StorageHandlersImpl is the receiver for all of the storage handler methods
 type StorageHandlersImpl struct {
-	imageCache  *spl.NameLookupCache
-	volumeCache *spl.VolumeLookupCache
+	containerStore *spl.ContainerStore
+	imageCache     *spl.NameLookupCache
+	volumeCache    *spl.VolumeLookupCache
 }
 
 const (

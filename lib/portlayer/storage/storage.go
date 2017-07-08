@@ -16,12 +16,15 @@ package storage
 
 import (
 	"context"
+	"io"
+	"net/url"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/view"
+	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/extraconfig"
 	"github.com/vmware/vic/pkg/vsphere/session"
@@ -55,4 +58,29 @@ func Init(ctx context.Context, session *session.Session, pool *object.ResourcePo
 		err = create(ctx, session, pool)
 	})
 	return err
+}
+
+type Resolver interface {
+	// URL returns a url to the data source representing `id`
+	URL(op trace.Operation, id string) (*url.URL, error)
+	// Owners returns a list of VMs that are using the resource specified by `url`
+	Owners(op trace.Operation, url *url.URL, filter func(vm *object.VirtualMachine) bool) ([]*object.VirtualMachine, error)
+}
+
+type Store interface {
+	NewArchiver(id string) (Archiver, error)
+	Resolver
+}
+
+type DataSource interface {
+	// Import writes `data` to the data source associated with this Archiver
+	Import(op trace.Operation, filterspec *archive.FilterSpec, data io.ReadCloser) error
+	// Export reads data from the associated data source and returns it as a tar archive
+	Export(op trace.Operation, filterspec *archive.FilterSpec, data bool) (io.ReadCloser, error)
+	// Source returns the mechanism by which the data source is accessed
+	// Examples:
+	//     vmdk mounted locally: *os.File
+	//     nfs volume:  XDR-client
+	//     via guesttools:  tar stream
+	Source() interface{}
 }
