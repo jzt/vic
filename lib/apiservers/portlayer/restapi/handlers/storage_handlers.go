@@ -63,6 +63,12 @@ func (h *StorageHandlersImpl) Configure(api *operations.PortLayerAPI, handlerCtx
 	ctx := context.Background()
 	op := trace.NewOperation(ctx, "configure")
 
+	c, err := spl.NewContainerStore(op, handlerCtx.Session)
+	if err != nil {
+		op.Errorf("Couldn't create containerStore: %s", err.Error())
+	}
+	h.containerStore = c
+
 	if len(spl.Config.ImageStores) == 0 {
 		log.Panicf("No image stores provided; unable to instantiate storage layer")
 	}
@@ -518,9 +524,13 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 		ancestor = *params.Ancestor
 	}
 
+	ancestorStore := ""
+	if params.AncestorStore != nil {
+		ancestorStore = *params.AncestorStore
+	}
+
 	op := trace.NewOperation(context.Background(), fmt.Sprintf("ExportArchive (%s, %s)", id, ancestor))
 
-	store, _ := util.ImageStoreNameToURL(params.Store)
 	data := params.Data
 
 	var filterSpec vicarchive.FilterSpec
@@ -547,13 +557,26 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 		}
 	}
 
+	var (
+		r   io.ReadCloser
+		err error
+	)
+
 	// Return the data back to the caller
 	pipeReader, pipeWriter := io.Pipe()
 	go func() {
+		switch params.Store {
+		case "container":
+			r, err = h.getContainerRWArchive(op, ancestorStore, id, ancestor)
+		case "volume":
+			r, err = h.getVolumeArchive()
+		default:
+			store, _ := util.ImageStoreNameToURL(params.Store)
 
-		r, err := h.imageCache.Export(op, store, id, ancestor, &filterSpec, data)
-		if err != nil {
-			op.Errorf("")
+			r, err = h.imageCache.Export(op, store, id, ancestor, &filterSpec, data)
+			if err != nil {
+				op.Errorf("")
+			}
 		}
 
 		n, err := io.Copy(pipeWriter, r)
@@ -569,6 +592,29 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 }
 
 //utility functions
+
+func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, store, id, ancestor string) (io.ReadCloser, error) {
+
+	storeURL, err := util.ImageStoreNameToURL(store)
+	if err != nil {
+		return nil, err
+	}
+
+	layer, err := h.imageCache.GetImage(op, storeURL, ancestor)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (h *StorageHandlersImpl) getVolumeArchive() (io.ReadCloser, error) {
+	return nil, nil
+}
+
+func getStore(ls, rs *url.URL, left, right string) (io.Reader, error) {
+	return nil, nil
+}
 
 // convert an SPL Image to a swagger-defined Image
 func convertImage(image *spl.Image) *models.Image {

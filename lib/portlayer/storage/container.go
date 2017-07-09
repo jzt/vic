@@ -16,7 +16,6 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -32,6 +31,7 @@ import (
 	"github.com/vmware/vic/pkg/vsphere/vm"
 )
 
+// TODO(jzt): move this to a more appropriate location
 type vmdk struct {
 	dm *disk.Manager
 	ds *datastore.Helper
@@ -85,26 +85,11 @@ type ContainerStore struct {
 }
 
 // NewContainerStore creates and returns a new container store
-func NewContainerStore(op trace.Operation, s *session.Session, u *url.URL) (*ContainerStore, error) {
+func NewContainerStore(op trace.Operation, s *session.Session) (*ContainerStore, error) {
 	dm, err := disk.NewDiskManager(op, s, Config.ContainerView)
 	if err != nil {
 		return nil, err
 	}
-
-	datastores, err := s.Finder.DatastoreList(op, u.Host)
-	if err != nil {
-		return nil, fmt.Errorf("Host returned error when trying to locate provided datastore %s: %s", u.String(), err.Error())
-	}
-
-	if len(datastores) != 1 {
-		return nil, fmt.Errorf("Found %d datastores with provided datastore path %s. Cannot create container store.", len(datastores), u)
-	}
-
-	// use this if we need to
-	// ds, err := datastore.NewHelper(op, s, datastores[0], filepath.Join(u.Path, StorageParentDir))
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	cs := &ContainerStore{
 		vmdk: vmdk{
@@ -161,6 +146,7 @@ func (c *ContainerStore) NewDataSource(op trace.Operation, id string) (*MountDat
 		return nil, errors.New("Unavailable")
 	}
 
+	// TODO(jzt): tweak this when online export is available
 	for _, o := range owners {
 		// o is a VM
 		_, _ = c.newOnlineDataSource(o)
@@ -185,23 +171,4 @@ func (c *ContainerStore) newDataSource(mountPath string) (*MountDataSource, erro
 
 func (c *ContainerStore) newOnlineDataSource(vm *vm.VirtualMachine) (DataSource, error) {
 	return nil, nil
-}
-
-// Import writes `data` to the data source associated with this DataSource
-func (c *ContainerStore) Import(op trace.Operation, filterspec *archive.FilterSpec, data io.ReadCloser) error {
-	return nil
-}
-
-// Export reads data from the associated data source and returns it as a tar archive
-func (c *ContainerStore) Export(op trace.Operation, filterspec *archive.FilterSpec, data bool) (io.ReadCloser, error) {
-	return nil, nil
-}
-
-// Source returns the mechanism by which the data source is accessed
-// Examples:
-//     vmdk mounted locally: *os.File
-//     nfs volume:  XDR-client
-//     via guesttools:  tar stream
-func Source() interface{} {
-	return nil
 }

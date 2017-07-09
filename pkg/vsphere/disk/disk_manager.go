@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"

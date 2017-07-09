@@ -68,7 +68,7 @@ type Resolver interface {
 }
 
 type Store interface {
-	NewArchiver(id string) (Archiver, error)
+	NewArchiver(id string) (DataSource, error)
 	Resolver
 }
 

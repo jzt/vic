@@ -694,7 +694,6 @@ func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer) (io.
 		return nil, NotFoundError(layer.Parent)
 	}
 
-	// TODO(jzt): figure out how to get container r/w layer ID here
 	for layer.Size == 0 {
 		layer, err = imagec.LayerCache().Get(layer.Parent)
 		switch err.(type) {
