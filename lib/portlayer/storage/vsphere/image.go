@@ -326,13 +326,55 @@ func (v *ImageStore) Export(op trace.Operation, store *url.URL, id, ancestor str
 	}, nil
 }
 
-func (v *ImageStore) NewDataSource(id string) (*portlayer.MountDataSource, error) {
-	return nil, nil
+func (v *ImageStore) NewDataSource(op trace.Operation, id string) (*portlayer.MountDataSource, error) {
+	u, err := v.URL(op, id)
+	if err != nil {
+		return nil, err
+	}
+
+	storeName, err := util.ImageStoreName(u)
+	if err != nil {
+		return nil, err
+	}
+
+	dsPath, err := v.imageDiskDSPath(storeName, id)
+	if err != nil {
+		return nil, err
+	}
+
+	mountPath, err := v.dm.AttachAndMount(op, dsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return v.newDataSource(mountPath)
+}
+
+func (v *ImageStore) newDataSource(mountPath string) (*portlayer.MountDataSource, error) {
+	var f *os.File
+	f, err := os.Open(mountPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &portlayer.MountDataSource{
+		Path: f,
+	}, nil
 }
 
 // URL returns a url to the disk image represented by `id`
 func (v *ImageStore) URL(op trace.Operation, id string) (*url.URL, error) {
-	return nil, nil
+	stores, err := v.ListImageStores(op)
+	if err != nil {
+		return nil, err
+	}
+
+	storeName, err := util.ImageStoreName(stores[0])
+	if err != nil {
+		return nil, err
+	}
+
+	return util.ImageURL(storeName, id)
 }
 
 // Owners returns a list of VMs that are using the disk specified by `url`

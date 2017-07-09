@@ -53,12 +53,12 @@ func (v *vmdk) LockedVMDKFilter(vm *mo.VirtualMachine) bool {
 
 // MountDataSource implements the DataSource interface for mounted devices
 type MountDataSource struct {
-	path *os.File
+	Path *os.File
 }
 
 // Source returns the data source associated with the DataSource
 func (m *MountDataSource) Source() interface{} {
-	return m.path
+	return m.Path
 }
 
 // Import writes `data` to the data source associated with this DataSource
@@ -68,7 +68,7 @@ func (m *MountDataSource) Import(op trace.Operation, spec *archive.FilterSpec, d
 
 // Export reads data from the associated data source and returns it as a tar archive
 func (m *MountDataSource) Export(op trace.Operation, spec *archive.FilterSpec, data bool) (io.ReadCloser, error) {
-	fi, err := m.path.Stat()
+	fi, err := m.Path.Stat()
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (m *MountDataSource) Export(op trace.Operation, spec *archive.FilterSpec, d
 	if !fi.IsDir() {
 		return nil, errors.New("Path must be a directory")
 	}
-	return archive.Diff(op, m.path.Name(), "", spec, data)
+	return archive.Diff(op, m.Path.Name(), "", spec, data)
 }
 
 // ContainerStore stores container storage information
@@ -130,7 +130,11 @@ func (c *ContainerStore) Owners(op trace.Operation, url *url.URL, filter func(vm
 
 // NewDataSource creates and returns an DataSource associated with container storage
 func (c *ContainerStore) NewDataSource(op trace.Operation, id string) (*MountDataSource, error) {
-	uri, _ := c.URL(op, id)
+	uri, err := c.URL(op, id)
+	if err != nil {
+		return nil, err
+	}
+
 	mountPath, err := c.Mount(op, uri)
 	if err == nil {
 		return c.newDataSource(mountPath)
@@ -165,7 +169,7 @@ func (c *ContainerStore) newDataSource(mountPath string) (*MountDataSource, erro
 	}
 
 	return &MountDataSource{
-		path: f,
+		Path: f,
 	}, nil
 }
 

@@ -22,6 +22,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/portlayer/util"
 	"github.com/vmware/vic/pkg/index"
@@ -238,15 +239,15 @@ func (c *NameLookupCache) Export(op trace.Operation, store *url.URL, id, ancesto
 }
 
 func (v *NameLookupCache) NewDataSource(id string) (*MountDataSource, error) {
-	return nil, nil
+	return v.DataStore.NewDataSource(id)
 }
 
 func (v *NameLookupCache) URL(op trace.Operation, id string) (*url.URL, error) {
-	return c.DataStore.URL(op, id)
+	return v.DataStore.URL(op, id)
 }
 
-func (v *NameLookupCache) Owners(op trace.Operation, url *url.URL, filter func(vm *object.VirtualMachine) bool) ([]*object.VirtualMachine, error) {
-	return c.DataStore.Owners(op, url, filter)
+func (v *NameLookupCache) Owners(op trace.Operation, url *url.URL, filter func(vm *mo.VirtualMachine) bool) ([]*mo.VirtualMachine, error) {
+	return v.DataStore.Owners(op, url, filter)
 }
 
 // GetImage gets the specified image from the given store by retreiving it from the cache.

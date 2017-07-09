@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -567,7 +568,7 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 	go func() {
 		switch params.Store {
 		case "container":
-			r, err = h.getContainerRWArchive(op, ancestorStore, id, ancestor)
+			r, err = h.getContainerRWArchive(op, id, ancestor, &filterSpec)
 		case "volume":
 			r, err = h.getVolumeArchive()
 		default:
@@ -593,19 +594,31 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 
 //utility functions
 
-func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, store, id, ancestor string) (io.ReadCloser, error) {
+func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ancestor string, spec *vicarchive.FilterSpec) (io.ReadCloser, error) {
 
-	storeURL, err := util.ImageStoreNameToURL(store)
+	l, err := h.containerStore.NewDataSource(op, id)
 	if err != nil {
 		return nil, err
 	}
 
-	layer, err := h.imageCache.GetImage(op, storeURL, ancestor)
+	r, err := h.imageCache.NewDataSource(ancestor)
 	if err != nil {
 		return nil, err
 	}
 
-	return nil, nil
+	ls := l.Source()
+	rs := r.Source()
+
+	right, ok := rs.(*MountDataSource)
+
+	lok, fl := ls.(*os.File)
+	rok, fr := right.(*os.File)
+
+	if !lok || !rok {
+		return nil, errors.New("Mismatched datasource types")
+	}
+
+	return vicarchive.Diff(op, fl.Path(), fr.Path(), spec, true)
 }
 
 func (h *StorageHandlersImpl) getVolumeArchive() (io.ReadCloser, error) {
