@@ -238,8 +238,8 @@ func (c *NameLookupCache) Export(op trace.Operation, store *url.URL, id, ancesto
 	return c.DataStore.Export(op, store, id, ancestor, spec, data)
 }
 
-func (v *NameLookupCache) NewDataSource(id string) (*MountDataSource, error) {
-	return v.DataStore.NewDataSource(id)
+func (v *NameLookupCache) NewDataSource(op trace.Operation, id string) (DataSource, error) {
+	return v.DataStore.NewDataSource(op, id)
 }
 
 func (v *NameLookupCache) URL(op trace.Operation, id string) (*url.URL, error) {

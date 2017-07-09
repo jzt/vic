@@ -15,6 +15,7 @@
 package vsphere
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -248,7 +249,7 @@ func (v *VolumeStore) Export(op trace.Operation, store *url.URL, id, ancestor st
 	}, nil
 }
 
-func (v *VolumeStore) NewDataSource(op trace.Operation, id string) (*storage.MountDataSource, error) {
+func (v *VolumeStore) NewDataSource(op trace.Operation, id string) (storage.DataSource, error) {
 	return nil, nil
 }
 

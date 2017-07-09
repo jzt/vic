@@ -42,8 +42,8 @@ import (
 	plclient "github.com/vmware/vic/lib/apiservers/portlayer/client"
 	plscopes "github.com/vmware/vic/lib/apiservers/portlayer/client/scopes"
 	plmodels "github.com/vmware/vic/lib/apiservers/portlayer/models"
+	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/metadata"
-	"github.com/vmware/vic/pkg/archive"
 )
 
 //***********
@@ -354,13 +354,17 @@ func (m *MockContainerProxy) AttachStreams(ctx context.Context, ac *AttachConfig
 	return nil
 }
 
+func (m *MockContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer) (io.Reader, error) {
+	return nil, nil
+}
+
 func (m *MockContainerProxy) StreamContainerStats(ctx context.Context, config *convert.ContainerStatsConfig) error {
 	return nil
 }
 
-func (m *MockContainerProxy) ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.Reader, error) {
-	reader := bytes.NewReader([]byte("test"))
-	return reader, nil
+func (m *MockContainerProxy) ArchiveExportReader(ctx context.Context, store, ancestorStore, deviceID, ancestor string, data bool, filterSpec archive.FilterSpec) (io.ReadCloser, error) {
+	//reader := bytes.NewReader([]byte("test"))
+	return nil, nil
 }
 
 func (m *MockContainerProxy) exitCode(vc *viccontainer.VicContainer) (string, error) {
@@ -393,10 +397,10 @@ func AddMockImageToCache() {
 		OnBuild:      nil,
 	}
 
-	cache.ImageCache().Add(mockImage)
+	_ = cache.ImageCache().Add(mockImage)
 
 	ref, _ := reference.ParseNamed(mockImage.Reference)
-	cache.RepositoryCache().AddReference(ref, mockImage.ImageID, false, mockImage.ImageID, false)
+	_ = cache.RepositoryCache().AddReference(ref, mockImage.ImageID, false, mockImage.ImageID, false)
 }
 
 func AddMockContainerToCache() {
@@ -744,7 +748,7 @@ func TestCreateConfigNetworkMode(t *testing.T) {
 		},
 	}
 
-	validateCreateConfig(&mockConfig)
+	_ = validateCreateConfig(&mockConfig)
 
 	assert.Equal(t, mockConfig.HostConfig.NetworkMode.NetworkName(), "net1", "expected NetworkMode is net1, found %s", mockConfig.HostConfig.NetworkMode)
 

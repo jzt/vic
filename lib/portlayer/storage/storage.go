@@ -72,13 +72,13 @@ type Resolver interface {
 
 // Store defines the methods that a store can perform
 type Store interface {
-	NewDataSource(id string) (*DataSource, error)
+	NewDataSource(op trace.Operation, id string) (*DataSource, error)
 	Resolver
 }
 
 // DataSource defines the methods for importing and exporting data to/from a data source
 type DataSource interface {
-	// Import writes `data` to the data source associated with this Archiver
+	// Import writes `data` to the data source associated with this DataSource
 	Import(op trace.Operation, filterspec *archive.FilterSpec, data io.ReadCloser) error
 	// Export reads data from the associated data source and returns it as a tar archive
 	Export(op trace.Operation, filterspec *archive.FilterSpec, data bool) (io.ReadCloser, error)

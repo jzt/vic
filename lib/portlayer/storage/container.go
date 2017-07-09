@@ -16,14 +16,12 @@ package storage
 
 import (
 	"errors"
-	"io"
 	"net/url"
 	"os"
 	"strings"
 
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/datastore"
 	"github.com/vmware/vic/pkg/vsphere/disk"
@@ -49,34 +47,6 @@ func (v *vmdk) Mount(op trace.Operation, uri *url.URL) (string, error) {
 
 func (v *vmdk) LockedVMDKFilter(vm *mo.VirtualMachine) bool {
 	return vm.Runtime.PowerState == types.VirtualMachinePowerStatePoweredOn
-}
-
-// MountDataSource implements the DataSource interface for mounted devices
-type MountDataSource struct {
-	Path *os.File
-}
-
-// Source returns the data source associated with the DataSource
-func (m *MountDataSource) Source() interface{} {
-	return m.Path
-}
-
-// Import writes `data` to the data source associated with this DataSource
-func (m *MountDataSource) Import(op trace.Operation, spec *archive.FilterSpec, data io.ReadCloser) error {
-	return errors.New("Not implemented")
-}
-
-// Export reads data from the associated data source and returns it as a tar archive
-func (m *MountDataSource) Export(op trace.Operation, spec *archive.FilterSpec, data bool) (io.ReadCloser, error) {
-	fi, err := m.Path.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	if !fi.IsDir() {
-		return nil, errors.New("Path must be a directory")
-	}
-	return archive.Diff(op, m.Path.Name(), "", spec, data)
 }
 
 // ContainerStore stores container storage information

@@ -203,7 +203,7 @@ func (v *VolumeLookupCache) VolumesList(op trace.Operation) ([]*Volume, error) {
 	return l, nil
 }
 
-func (v *VolumeLookupCache) NewDataSource(op trace.Operation, id string) (*MountDataSource, error) {
+func (v *VolumeLookupCache) NewDataSource(op trace.Operation, id string) (DataSource, error) {
 	return nil, errors.New("VolumeLookupCache does not yet implement NewDataSource")
 }
 

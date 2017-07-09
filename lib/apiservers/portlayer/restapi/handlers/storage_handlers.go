@@ -525,10 +525,10 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 		ancestor = *params.Ancestor
 	}
 
-	ancestorStore := ""
-	if params.AncestorStore != nil {
-		ancestorStore = *params.AncestorStore
-	}
+	// ancestorStore := ""
+	// if params.AncestorStore != nil {
+	// 	ancestorStore = *params.AncestorStore
+	// }
 
 	op := trace.NewOperation(context.Background(), fmt.Sprintf("ExportArchive (%s, %s)", id, ancestor))
 
@@ -609,16 +609,14 @@ func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ance
 	ls := l.Source()
 	rs := r.Source()
 
-	right, ok := rs.(*MountDataSource)
-
-	lok, fl := ls.(*os.File)
-	rok, fr := right.(*os.File)
+	fl, lok := ls.(*os.File)
+	fr, rok := rs.(*os.File)
 
 	if !lok || !rok {
 		return nil, errors.New("Mismatched datasource types")
 	}
 
-	return vicarchive.Diff(op, fl.Path(), fr.Path(), spec, true)
+	return vicarchive.Diff(op, fl.Name(), fr.Name(), spec, true)
 }
 
 func (h *StorageHandlersImpl) getVolumeArchive() (io.ReadCloser, error) {

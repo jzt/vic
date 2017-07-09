@@ -15,6 +15,7 @@
 package nfs
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,6 +23,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/config/executor"
 	"github.com/vmware/vic/lib/portlayer/storage"
@@ -106,7 +108,7 @@ func (v *VolumeStore) volMetadataDirPath(ID string) string {
 	return path.Join(metadataDir, ID)
 }
 
-// Creates a volume directory and volume object for NFS based volumes
+// VolumeCreate creates a volume directory and volume object for NFS based volumes
 func (v *VolumeStore) VolumeCreate(op trace.Operation, ID string, store *url.URL, capacityKB uint64, info map[string][]byte) (*storage.Volume, error) {
 	target, err := v.Service.Mount(op)
 	if err != nil {
@@ -162,6 +164,7 @@ func (v *VolumeStore) VolumeDestroy(op trace.Operation, vol *storage.Volume) err
 	return nil
 }
 
+// VolumesList lists NFS volumes
 func (v *VolumeStore) VolumesList(op trace.Operation) ([]*storage.Volume, error) {
 
 	target, err := v.Service.Mount(op)
@@ -210,6 +213,18 @@ func (v *VolumeStore) VolumesList(op trace.Operation) ([]*storage.Volume, error)
 // Export creates and returns a tar archive containing data found between an nfs layer one or all of its ancestors
 func (v *VolumeStore) Export(op trace.Operation, store *url.URL, id, ancestor string, spec *archive.FilterSpec, data bool) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("vSphere Integrated Containers does not yet implement Export for nfs volumes")
+}
+
+func (v *VolumeStore) NewDataSource(op trace.Operation, id string) (storage.DataSource, error) {
+	return nil, errors.New("VolumeStore does not yet implement NewDataSource")
+}
+
+func (v *VolumeStore) URL(op trace.Operation, id string) (*url.URL, error) {
+	return nil, errors.New("VolumeStore does not yet implement URL")
+}
+
+func (v *VolumeStore) Owners(op trace.Operation, url *url.URL, filter func(vm *mo.VirtualMachine) bool) ([]*mo.VirtualMachine, error) {
+	return nil, errors.New("VolumeStore does not yet implement Owners")
 }
 
 func (v *VolumeStore) writeMetadata(op trace.Operation, ID string, info map[string][]byte, target Target) error {

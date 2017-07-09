@@ -326,7 +326,7 @@ func (v *ImageStore) Export(op trace.Operation, store *url.URL, id, ancestor str
 	}, nil
 }
 
-func (v *ImageStore) NewDataSource(op trace.Operation, id string) (*portlayer.MountDataSource, error) {
+func (v *ImageStore) NewDataSource(op trace.Operation, id string) (portlayer.DataSource, error) {
 	u, err := v.URL(op, id)
 	if err != nil {
 		return nil, err
@@ -337,10 +337,7 @@ func (v *ImageStore) NewDataSource(op trace.Operation, id string) (*portlayer.Mo
 		return nil, err
 	}
 
-	dsPath, err := v.imageDiskDSPath(storeName, id)
-	if err != nil {
-		return nil, err
-	}
+	dsPath := v.imageDiskDSPath(storeName, id)
 
 	mountPath, err := v.dm.AttachAndMount(op, dsPath)
 	if err != nil {
@@ -350,7 +347,7 @@ func (v *ImageStore) NewDataSource(op trace.Operation, id string) (*portlayer.Mo
 	return v.newDataSource(mountPath)
 }
 
-func (v *ImageStore) newDataSource(mountPath string) (*portlayer.MountDataSource, error) {
+func (v *ImageStore) newDataSource(mountPath string) (portlayer.DataSource, error) {
 	var f *os.File
 	f, err := os.Open(mountPath)
 	if err != nil {
