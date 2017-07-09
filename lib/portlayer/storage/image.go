@@ -75,6 +75,9 @@ type ImageStorer interface {
 	// container, this will return an error.
 	DeleteImage(op trace.Operation, image *Image) (*Image, error)
 
+	// Store
+	Store
+
 	// Archiver defines the Export and WriteArchive interface methods
 	archive.Archiver
 }

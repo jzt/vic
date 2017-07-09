@@ -22,6 +22,7 @@ import (
 	"path"
 
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/config/executor"
@@ -245,4 +246,16 @@ func (v *VolumeStore) Export(op trace.Operation, store *url.URL, id, ancestor st
 		ReadCloser: tar,
 		clean:      cleanFunc,
 	}, nil
+}
+
+func (v *VolumeStore) NewDataSource(op trace.Operation, id string) (*storage.MountDataSource, error) {
+	return nil, nil
+}
+
+func (v *VolumeStore) URL(op trace.Operation, id string) (*url.URL, error) {
+	return nil, errors.New("VolumeStore does not yet implement URL")
+}
+
+func (v *VolumeStore) Owners(op trace.Operation, url *url.URL, filter func(vm *mo.VirtualMachine) bool) ([]*mo.VirtualMachine, error) {
+	return nil, errors.New("VolumeStore does not yet implement Owners")
 }

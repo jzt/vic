@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -23,6 +24,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/portlayer/exec"
 	"github.com/vmware/vic/lib/portlayer/util"
@@ -199,6 +201,18 @@ func (v *VolumeLookupCache) VolumesList(op trace.Operation) ([]*Volume, error) {
 	}
 
 	return l, nil
+}
+
+func (v *VolumeLookupCache) NewDataSource(op trace.Operation, id string) (*MountDataSource, error) {
+	return nil, errors.New("VolumeLookupCache does not yet implement NewDataSource")
+}
+
+func (v *VolumeLookupCache) URL(op trace.Operation, id string) (*url.URL, error) {
+	return nil, errors.New("VolumeLookupCache does not yet implement URL")
+}
+
+func (v *VolumeLookupCache) Owners(op trace.Operation, url *url.URL, filter func(vm *mo.VirtualMachine) bool) ([]*mo.VirtualMachine, error) {
+	return nil, errors.New("VolumeLookupCache does not yet implement Owners")
 }
 
 func (v *VolumeLookupCache) Export(op trace.Operation, store *url.URL, id, ancestor string, spec *archive.FilterSpec, data bool) (io.ReadCloser, error) {

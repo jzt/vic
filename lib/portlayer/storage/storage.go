@@ -24,6 +24,7 @@ import (
 
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/view"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/extraconfig"
@@ -45,6 +46,7 @@ func create(ctx context.Context, session *session.Session, pool *object.Resource
 	return nil
 }
 
+// Init intializes the storage layer configuration
 func Init(ctx context.Context, session *session.Session, pool *object.ResourcePool, source extraconfig.DataSource, _ extraconfig.DataSink) error {
 	defer trace.End(trace.Begin(""))
 
@@ -60,18 +62,21 @@ func Init(ctx context.Context, session *session.Session, pool *object.ResourcePo
 	return err
 }
 
+// Resolver defines methods for mapping ids to URLS, and urls to owners of that device
 type Resolver interface {
 	// URL returns a url to the data source representing `id`
 	URL(op trace.Operation, id string) (*url.URL, error)
 	// Owners returns a list of VMs that are using the resource specified by `url`
-	Owners(op trace.Operation, url *url.URL, filter func(vm *object.VirtualMachine) bool) ([]*object.VirtualMachine, error)
+	Owners(op trace.Operation, url *url.URL, filter func(vm *mo.VirtualMachine) bool) ([]*mo.VirtualMachine, error)
 }
 
+// Store defines the methods that a store can perform
 type Store interface {
-	NewArchiver(id string) (DataSource, error)
+	NewDataSource(id string) (*DataSource, error)
 	Resolver
 }
 
+// DataSource defines the methods for importing and exporting data to/from a data source
 type DataSource interface {
 	// Import writes `data` to the data source associated with this Archiver
 	Import(op trace.Operation, filterspec *archive.FilterSpec, data io.ReadCloser) error

@@ -27,6 +27,7 @@ import (
 	docker "github.com/docker/docker/pkg/archive"
 
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/portlayer/exec"
@@ -323,6 +324,20 @@ func (v *ImageStore) Export(op trace.Operation, store *url.URL, id, ancestor str
 		ReadCloser: tar,
 		clean:      cleanFunc,
 	}, nil
+}
+
+func (v *ImageStore) NewDataSource(id string) (*portlayer.MountDataSource, error) {
+	return nil, nil
+}
+
+// URL returns a url to the disk image represented by `id`
+func (v *ImageStore) URL(op trace.Operation, id string) (*url.URL, error) {
+	return nil, nil
+}
+
+// Owners returns a list of VMs that are using the disk specified by `url`
+func (v *ImageStore) Owners(op trace.Operation, url *url.URL, filter func(vm *mo.VirtualMachine) bool) ([]*mo.VirtualMachine, error) {
+	return nil, nil
 }
 
 // cleanup safely on error

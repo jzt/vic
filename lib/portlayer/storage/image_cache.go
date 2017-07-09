@@ -237,6 +237,18 @@ func (c *NameLookupCache) Export(op trace.Operation, store *url.URL, id, ancesto
 	return c.DataStore.Export(op, store, id, ancestor, spec, data)
 }
 
+func (v *NameLookupCache) NewDataSource(id string) (*MountDataSource, error) {
+	return nil, nil
+}
+
+func (v *NameLookupCache) URL(op trace.Operation, id string) (*url.URL, error) {
+	return c.DataStore.URL(op, id)
+}
+
+func (v *NameLookupCache) Owners(op trace.Operation, url *url.URL, filter func(vm *object.VirtualMachine) bool) ([]*object.VirtualMachine, error) {
+	return c.DataStore.Owners(op, url, filter)
+}
+
 // GetImage gets the specified image from the given store by retreiving it from the cache.
 func (c *NameLookupCache) GetImage(op trace.Operation, store *url.URL, ID string) (*Image, error) {
 	op.Debugf("Getting image %s from %s", ID, store.String())

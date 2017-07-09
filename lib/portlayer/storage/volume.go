@@ -47,6 +47,9 @@ type VolumeStorer interface {
 	// Lists all volumes
 	VolumesList(op trace.Operation) ([]*Volume, error)
 
+	// Store
+	Store
+
 	// Archiver defines the Import and Export interface methods
 	archive.Archiver
 }
