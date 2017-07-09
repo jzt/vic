@@ -256,10 +256,16 @@ func (v *VolumeStore) NewDataSource(op trace.Operation, id string) (storage.Data
 		return nil, err
 	}
 
-	return v.newDataSource(mountPath)
+	cleanFunc := func() {
+		if err := v.dm.UnmountAndDetach(op, dsPath); err != nil {
+			op.Infof("Error cleaning up disk: %s", err.Error())
+		}
+	}
+
+	return v.newDataSource(mountPath, cleanFunc)
 }
 
-func (v *VolumeStore) newDataSource(mountPath string) (storage.DataSource, error) {
+func (v *VolumeStore) newDataSource(mountPath string, cleanFunc func()) (storage.DataSource, error) {
 	var f *os.File
 	f, err := os.Open(mountPath)
 	if err != nil {
@@ -267,7 +273,8 @@ func (v *VolumeStore) newDataSource(mountPath string) (storage.DataSource, error
 	}
 
 	return &storage.MountDataSource{
-		Path: f,
+		Path:  f,
+		Clean: cleanFunc,
 	}, nil
 }
 

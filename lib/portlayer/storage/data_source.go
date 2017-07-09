@@ -25,7 +25,8 @@ import (
 
 // MountDataSource implements the DataSource interface for mounted devices
 type MountDataSource struct {
-	Path *os.File
+	Path  *os.File
+	Clean func()
 }
 
 // Source returns the data source associated with the DataSource

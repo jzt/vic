@@ -596,14 +596,24 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 
 func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ancestor string, spec vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {
 
+	mounts := []*spl.MountDataSource{}
+
 	l, err := h.containerStore.NewDataSource(op, id)
 	if err != nil {
 		return nil, err
 	}
+	mounts = append(mounts, l.(*spl.MountDataSource))
 
 	r, err := h.imageCache.NewDataSource(op, ancestor)
 	if err != nil {
 		return nil, err
+	}
+	mounts = append(mounts, r.(*spl.MountDataSource))
+
+	cleanFunc := func() {
+		for _, m := range mounts {
+			m.Clean()
+		}
 	}
 
 	ls := l.Source()
@@ -616,7 +626,15 @@ func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ance
 		return nil, errors.New("Mismatched datasource types")
 	}
 
-	return vicarchive.Diff(op, fl.Name(), fr.Name(), &spec, data)
+	tar, err := vicarchive.Diff(op, fl.Name(), fr.Name(), &spec, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &spl.CleanupReader{
+		ReadCloser: tar,
+		Clean:      cleanFunc,
+	}, nil
 }
 
 func (h *StorageHandlersImpl) getVolumeArchive(op trace.Operation, id string, spec vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {

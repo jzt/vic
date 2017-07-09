@@ -99,7 +99,7 @@ func (c *ContainerStore) Owners(op trace.Operation, url *url.URL, filter func(vm
 }
 
 // NewDataSource creates and returns an DataSource associated with container storage
-func (c *ContainerStore) NewDataSource(op trace.Operation, id string) (*MountDataSource, error) {
+func (c *ContainerStore) NewDataSource(op trace.Operation, id string) (DataSource, error) {
 	uri, err := c.URL(op, id)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func (c *ContainerStore) NewDataSource(op trace.Operation, id string) (*MountDat
 	return nil, errors.New("Unavailable")
 }
 
-func (c *ContainerStore) newDataSource(mountPath string) (*MountDataSource, error) {
+func (c *ContainerStore) newDataSource(mountPath string) (DataSource, error) {
 	f, err := os.Open(mountPath)
 	if err != nil {
 		return nil, err
