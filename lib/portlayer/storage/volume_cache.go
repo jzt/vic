@@ -204,11 +204,41 @@ func (v *VolumeLookupCache) VolumesList(op trace.Operation) ([]*Volume, error) {
 }
 
 func (v *VolumeLookupCache) NewDataSource(op trace.Operation, id string) (DataSource, error) {
-	return nil, errors.New("VolumeLookupCache does not yet implement NewDataSource")
+	volume, err := v.VolumeGet(op, id)
+	if err != nil {
+		return nil, err
+	}
+
+	storeName, err := util.VolumeStoreName(volume.Store)
+	if err != nil {
+		return nil, err
+	}
+
+	store, ok := v.volumeStores[storeName]
+	if !ok {
+		return nil, fmt.Errorf("Volume store not found: %s", storeName)
+	}
+
+	return store.NewDataSource(op, id)
 }
 
 func (v *VolumeLookupCache) URL(op trace.Operation, id string) (*url.URL, error) {
-	return nil, errors.New("VolumeLookupCache does not yet implement URL")
+	volume, err := v.VolumeGet(op, id)
+	if err != nil {
+		return nil, err
+	}
+
+	storeName, err := util.VolumeStoreName(volume.Store)
+	if err != nil {
+		return nil, err
+	}
+
+	store, ok := v.volumeStores[storeName]
+	if !ok {
+		return nil, fmt.Errorf("Volume store not found: %s", storeName)
+	}
+
+	return store.URL(op, id)
 }
 
 func (v *VolumeLookupCache) Owners(op trace.Operation, url *url.URL, filter func(vm *mo.VirtualMachine) bool) ([]*mo.VirtualMachine, error) {

@@ -12,23 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package vsphere
+package storage
 
 import (
 	"io"
 )
 
-// cleanReader wraps an io.ReadCloser, calling the supplied cleanup function on Close()
-type cleanReader struct {
+// CleanupReader wraps an io.ReadCloser, calling the supplied cleanup function on Close()
+type CleanupReader struct {
 	io.ReadCloser
-	clean func()
+	Clean func()
 }
 
-func (c *cleanReader) Read(p []byte) (int, error) {
+func (c *CleanupReader) Read(p []byte) (int, error) {
 	return c.ReadCloser.Read(p)
 }
 
-func (c *cleanReader) Close() error {
-	defer c.clean()
+func (c *CleanupReader) Close() error {
+	defer c.Clean()
 	return c.ReadCloser.Close()
 }

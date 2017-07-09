@@ -568,9 +568,9 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 	go func() {
 		switch params.Store {
 		case "container":
-			r, err = h.getContainerRWArchive(op, id, ancestor, &filterSpec)
+			r, err = h.getContainerRWArchive(op, id, ancestor, filterSpec, data)
 		case "volume":
-			r, err = h.getVolumeArchive()
+			r, err = h.getVolumeArchive(op, id, filterSpec, data)
 		default:
 			store, _ := util.ImageStoreNameToURL(params.Store)
 
@@ -594,14 +594,14 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 
 //utility functions
 
-func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ancestor string, spec *vicarchive.FilterSpec) (io.ReadCloser, error) {
+func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ancestor string, spec vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {
 
 	l, err := h.containerStore.NewDataSource(op, id)
 	if err != nil {
 		return nil, err
 	}
 
-	r, err := h.imageCache.NewDataSource(ancestor)
+	r, err := h.imageCache.NewDataSource(op, ancestor)
 	if err != nil {
 		return nil, err
 	}
@@ -616,15 +616,23 @@ func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ance
 		return nil, errors.New("Mismatched datasource types")
 	}
 
-	return vicarchive.Diff(op, fl.Name(), fr.Name(), spec, true)
+	return vicarchive.Diff(op, fl.Name(), fr.Name(), &spec, data)
 }
 
-func (h *StorageHandlersImpl) getVolumeArchive() (io.ReadCloser, error) {
-	return nil, nil
-}
+func (h *StorageHandlersImpl) getVolumeArchive(op trace.Operation, id string, spec vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {
+	l, err := h.volumeCache.NewDataSource(op, id)
+	if err != nil {
+		return nil, err
+	}
 
-func getStore(ls, rs *url.URL, left, right string) (io.Reader, error) {
-	return nil, nil
+	ls := l.Source()
+
+	fl, lok := ls.(*os.File)
+	if !lok {
+		return nil, errors.New("Source must be a file!")
+	}
+
+	return vicarchive.Diff(op, fl.Name(), "", &spec, data)
 }
 
 // convert an SPL Image to a swagger-defined Image

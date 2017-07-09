@@ -72,7 +72,7 @@ type Resolver interface {
 
 // Store defines the methods that a store can perform
 type Store interface {
-	NewDataSource(op trace.Operation, id string) (*DataSource, error)
+	NewDataSource(op trace.Operation, id string) (DataSource, error)
 	Resolver
 }
 

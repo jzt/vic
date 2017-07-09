@@ -243,14 +243,32 @@ func (v *VolumeStore) Export(op trace.Operation, store *url.URL, id, ancestor st
 	}
 
 	// wrap in a cleanReader so we can cleanup after the stream finishes
-	return &cleanReader{
+	return &storage.CleanupReader{
 		ReadCloser: tar,
-		clean:      cleanFunc,
+		Clean:      cleanFunc,
 	}, nil
 }
 
 func (v *VolumeStore) NewDataSource(op trace.Operation, id string) (storage.DataSource, error) {
-	return nil, nil
+	dsPath := v.volDiskDSPath(id)
+	mountPath, err := v.dm.AttachAndMount(op, dsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return v.newDataSource(mountPath)
+}
+
+func (v *VolumeStore) newDataSource(mountPath string) (storage.DataSource, error) {
+	var f *os.File
+	f, err := os.Open(mountPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &storage.MountDataSource{
+		Path: f,
+	}, nil
 }
 
 func (v *VolumeStore) URL(op trace.Operation, id string) (*url.URL, error) {

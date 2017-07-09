@@ -31,7 +31,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/vic/lib/archive"
 	"github.com/vmware/vic/lib/portlayer/exec"
-	portlayer "github.com/vmware/vic/lib/portlayer/storage"
+	"github.com/vmware/vic/lib/portlayer/storage"
 	"github.com/vmware/vic/lib/portlayer/util"
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/datastore"
@@ -80,7 +80,7 @@ type ImageStore struct {
 }
 
 func NewImageStore(op trace.Operation, s *session.Session, u *url.URL) (*ImageStore, error) {
-	dm, err := disk.NewDiskManager(op, s, portlayer.Config.ContainerView)
+	dm, err := disk.NewDiskManager(op, s, storage.Config.ContainerView)
 	if err != nil {
 		return nil, err
 	}
@@ -227,8 +227,8 @@ func (v *ImageStore) ListImageStores(op trace.Operation) ([]*url.URL, error) {
 // ID - textual ID for the image to be written
 // meta - metadata associated with the image
 // Tag - the tag of the image to be written
-func (v *ImageStore) WriteImage(op trace.Operation, parent *portlayer.Image, ID string, meta map[string][]byte, sum string,
-	r io.Reader) (*portlayer.Image, error) {
+func (v *ImageStore) WriteImage(op trace.Operation, parent *storage.Image, ID string, meta map[string][]byte, sum string,
+	r io.Reader) (*storage.Image, error) {
 
 	storeName, err := util.ImageStoreName(parent.Store)
 	if err != nil {
@@ -243,7 +243,7 @@ func (v *ImageStore) WriteImage(op trace.Operation, parent *portlayer.Image, ID 
 	var dsk *disk.VirtualDisk
 	// If this is scratch, then it's the root of the image store.  All images
 	// will be descended from this created and prepared fs.
-	if ID == portlayer.Scratch.ID {
+	if ID == storage.Scratch.ID {
 		// Create the scratch layer
 		if err := v.scratch(op, storeName); err != nil {
 			return nil, err
@@ -260,7 +260,7 @@ func (v *ImageStore) WriteImage(op trace.Operation, parent *portlayer.Image, ID 
 		}
 	}
 
-	newImage := &portlayer.Image{
+	newImage := &storage.Image{
 		ID:         ID,
 		SelfLink:   imageURL,
 		ParentLink: parent.SelfLink,
@@ -320,13 +320,13 @@ func (v *ImageStore) Export(op trace.Operation, store *url.URL, id, ancestor str
 	}
 
 	// wrap in a cleanReader so we can cleanup after the stream finishes
-	return &cleanReader{
+	return &storage.CleanupReader{
 		ReadCloser: tar,
-		clean:      cleanFunc,
+		Clean:      cleanFunc,
 	}, nil
 }
 
-func (v *ImageStore) NewDataSource(op trace.Operation, id string) (portlayer.DataSource, error) {
+func (v *ImageStore) NewDataSource(op trace.Operation, id string) (storage.DataSource, error) {
 	u, err := v.URL(op, id)
 	if err != nil {
 		return nil, err
@@ -347,14 +347,14 @@ func (v *ImageStore) NewDataSource(op trace.Operation, id string) (portlayer.Dat
 	return v.newDataSource(mountPath)
 }
 
-func (v *ImageStore) newDataSource(mountPath string) (portlayer.DataSource, error) {
+func (v *ImageStore) newDataSource(mountPath string) (storage.DataSource, error) {
 	var f *os.File
 	f, err := os.Open(mountPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &portlayer.MountDataSource{
+	return &storage.MountDataSource{
 		Path: f,
 	}, nil
 }
@@ -503,30 +503,30 @@ func (v *ImageStore) scratch(op trace.Operation, storeName string) error {
 	)
 
 	// Create the image directory in the store.
-	imageDir := v.imageDirPath(storeName, portlayer.Scratch.ID)
+	imageDir := v.imageDirPath(storeName, storage.Scratch.ID)
 	if _, err := v.ds.Mkdir(op, false, imageDir); err != nil {
 		return err
 	}
 
 	// Write the metadata to the datastore
-	metaDataDir := v.imageMetadataDirPath(storeName, portlayer.Scratch.ID)
+	metaDataDir := v.imageMetadataDirPath(storeName, storage.Scratch.ID)
 	if err := writeMetadata(op, v.ds, metaDataDir, nil); err != nil {
 		return err
 	}
 
-	imageDiskDsURI := v.imageDiskDSPath(storeName, portlayer.Scratch.ID)
-	op.Infof("Creating image %s (%s)", portlayer.Scratch.ID, imageDiskDsURI)
+	imageDiskDsURI := v.imageDiskDSPath(storeName, storage.Scratch.ID)
+	op.Infof("Creating image %s (%s)", storage.Scratch.ID, imageDiskDsURI)
 
 	size = defaultDiskSizeInKB
-	if portlayer.Config.ScratchSize != 0 {
-		size = portlayer.Config.ScratchSize
+	if storage.Config.ScratchSize != 0 {
+		size = storage.Config.ScratchSize
 	}
 
 	defer func() {
 		if err == nil {
 			return
 		}
-		v.cleanupDisk(op, portlayer.Scratch.ID, storeName, vmdisk)
+		v.cleanupDisk(op, storage.Scratch.ID, storeName, vmdisk)
 	}()
 
 	config := disk.NewPersistentDisk(imageDiskDsURI).WithCapacity(size)
@@ -537,7 +537,7 @@ func (v *ImageStore) scratch(op trace.Operation, storeName string) error {
 		return err
 	}
 
-	op.Debugf("Scratch disk created with size %d", portlayer.Config.ScratchSize)
+	op.Debugf("Scratch disk created with size %d", storage.Config.ScratchSize)
 
 	// Make the filesystem and set its label to defaultDiskLabel
 	if err = vmdisk.Mkfs(defaultDiskLabel); err != nil {
@@ -552,14 +552,14 @@ func (v *ImageStore) scratch(op trace.Operation, storeName string) error {
 		return err
 	}
 
-	if err = v.writeManifest(op, storeName, portlayer.Scratch.ID, nil); err != nil {
+	if err = v.writeManifest(op, storeName, storage.Scratch.ID, nil); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (v *ImageStore) GetImage(op trace.Operation, store *url.URL, ID string) (*portlayer.Image, error) {
+func (v *ImageStore) GetImage(op trace.Operation, store *url.URL, ID string) (*storage.Image, error) {
 	defer trace.End(trace.Begin(store.String() + "/" + ID))
 	storeName, err := util.ImageStoreName(store)
 	if err != nil {
@@ -601,7 +601,7 @@ func (v *ImageStore) GetImage(op trace.Operation, store *url.URL, ID string) (*p
 		}
 	}
 
-	newImage := &portlayer.Image{
+	newImage := &storage.Image{
 		ID:         ID,
 		SelfLink:   imageURL,
 		Store:      &s,
@@ -614,7 +614,7 @@ func (v *ImageStore) GetImage(op trace.Operation, store *url.URL, ID string) (*p
 	return newImage, nil
 }
 
-func (v *ImageStore) ListImages(op trace.Operation, store *url.URL, IDs []string) ([]*portlayer.Image, error) {
+func (v *ImageStore) ListImages(op trace.Operation, store *url.URL, IDs []string) ([]*storage.Image, error) {
 
 	storeName, err := util.ImageStoreName(store)
 	if err != nil {
@@ -626,7 +626,7 @@ func (v *ImageStore) ListImages(op trace.Operation, store *url.URL, IDs []string
 		return nil, err
 	}
 
-	images := []*portlayer.Image{}
+	images := []*storage.Image{}
 	for _, f := range res.File {
 		file, ok := f.(*types.FileInfo)
 		if !ok {
@@ -636,7 +636,7 @@ func (v *ImageStore) ListImages(op trace.Operation, store *url.URL, IDs []string
 		ID := file.Path
 
 		// filter out scratch
-		if ID == portlayer.Scratch.ID {
+		if ID == storage.Scratch.ID {
 			continue
 		}
 
@@ -655,7 +655,7 @@ func (v *ImageStore) ListImages(op trace.Operation, store *url.URL, IDs []string
 // DeleteImage deletes an image from the image store.  If the image is in
 // use either by way of inheritance or because it's attached to a
 // container, this will return an error.
-func (v *ImageStore) DeleteImage(op trace.Operation, image *portlayer.Image) (*portlayer.Image, error) {
+func (v *ImageStore) DeleteImage(op trace.Operation, image *storage.Image) (*storage.Image, error) {
 	//  check if the image is in use.
 	if err := imagesInUse(op, image.ID); err != nil {
 		op.Errorf("ImageStore: delete image error: %s", err.Error())
@@ -720,7 +720,7 @@ func (v *ImageStore) cleanup(op trace.Operation, store *url.URL) error {
 
 		ID := file.Path
 
-		if ID == portlayer.Scratch.ID {
+		if ID == storage.Scratch.ID {
 			continue
 		}
 
@@ -773,7 +773,7 @@ func imagesInUse(op trace.Operation, ID string) error {
 		layerID := cont.ExecConfig.LayerID
 
 		if layerID == ID {
-			return &portlayer.ErrImageInUse{
+			return &storage.ErrImageInUse{
 				Msg: fmt.Sprintf("image %s in use by %s", ID, cont.ExecConfig.ID),
 			}
 		}
@@ -785,7 +785,7 @@ func imagesInUse(op trace.Operation, ID string) error {
 // populate the scratch with minimum OS structure defined in FileForMinOS and DirForMinOS
 func createBaseStructure(op trace.Operation, vmdisk *disk.VirtualDisk) (err error) {
 	// tmp dir to mount the disk
-	dir, err := ioutil.TempDir("", "mnt-"+portlayer.Scratch.ID)
+	dir, err := ioutil.TempDir("", "mnt-"+storage.Scratch.ID)
 	if err != nil {
 		op.Errorf("Failed to create tempDir: %s", err)
 	}
