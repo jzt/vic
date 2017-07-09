@@ -36,13 +36,23 @@ type vmdk struct {
 	s  *session.Session
 }
 
-func (v *vmdk) Mount(op trace.Operation, uri *url.URL) (string, error) {
+func (v *vmdk) Mount(op trace.Operation, uri *url.URL) (string, func(), error) {
 	if uri.Scheme != "ds" {
 		return "", errors.New("vmdk path must be a datastore url with \"ds\" scheme")
 	}
 
-	dsPath, _ := datastore.PathFromString(uri.Path)
-	return v.dm.AttachAndMount(op, dsPath)
+	dsPath, err := datastore.PathFromString(uri.Path)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cleanFunc := func() {
+		if err := v.dm.UnmountAndDetach(op, dsPath); err != nil {
+			op.Errorf("Error cleaning up disk: %s", err.Error())
+		}
+	}
+	mountPath, err := v.dm.AttachAndMount(op, dsPath)
+	return mountPath, cleanFunc, err
 }
 
 func (v *vmdk) LockedVMDKFilter(vm *mo.VirtualMachine) bool {
@@ -105,9 +115,9 @@ func (c *ContainerStore) NewDataSource(op trace.Operation, id string) (DataSourc
 		return nil, err
 	}
 
-	mountPath, err := c.Mount(op, uri)
+	mountPath, cleanFunc, err := c.Mount(op, uri)
 	if err == nil {
-		return c.newDataSource(mountPath)
+		return c.newDataSource(mountPath, cleanFunc)
 	}
 
 	// check for vmdk locked error here
@@ -132,14 +142,15 @@ func (c *ContainerStore) NewDataSource(op trace.Operation, id string) (DataSourc
 	return nil, errors.New("Unavailable")
 }
 
-func (c *ContainerStore) newDataSource(mountPath string) (DataSource, error) {
+func (c *ContainerStore) newDataSource(mountPath string, cleanFunc func()) (DataSource, error) {
 	f, err := os.Open(mountPath)
 	if err != nil {
 		return nil, err
 	}
 
 	return &MountDataSource{
-		Path: f,
+		Path:  f,
+		Clean: cleanFunc,
 	}, nil
 }
 

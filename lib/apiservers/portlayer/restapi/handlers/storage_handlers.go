@@ -643,6 +643,11 @@ func (h *StorageHandlersImpl) getVolumeArchive(op trace.Operation, id string, sp
 		return nil, err
 	}
 
+	cleanFunc := func() {
+		m := l.(*spl.MountDataSource)
+		m.Clean()
+	}
+
 	ls := l.Source()
 
 	fl, lok := ls.(*os.File)
@@ -650,7 +655,15 @@ func (h *StorageHandlersImpl) getVolumeArchive(op trace.Operation, id string, sp
 		return nil, errors.New("Source must be a file!")
 	}
 
-	return vicarchive.Diff(op, fl.Name(), "", &spec, data)
+	tar, err := vicarchive.Diff(op, fl.Name(), "", &spec, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &spl.CleanupReader{
+		ReadCloser: tar,
+		Clean:      cleanFunc,
+	}, nil
 }
 
 // convert an SPL Image to a swagger-defined Image
