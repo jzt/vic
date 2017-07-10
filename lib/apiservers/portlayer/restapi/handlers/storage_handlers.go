@@ -66,23 +66,23 @@ func (h *StorageHandlersImpl) Configure(api *operations.PortLayerAPI, handlerCtx
 
 	c, err := spl.NewContainerStore(op, handlerCtx.Session)
 	if err != nil {
-		op.Errorf("Couldn't create containerStore: %s", err.Error())
+		op.Panicf("Couldn't create containerStore: %s", err.Error())
 	}
 	h.containerStore = c
 
 	if len(spl.Config.ImageStores) == 0 {
-		log.Panicf("No image stores provided; unable to instantiate storage layer")
+		op.Panicf("No image stores provided; unable to instantiate storage layer")
 	}
 
 	imageStoreURL := spl.Config.ImageStores[0]
 	// TODO: support multiple image stores. Right now we only support the first one
 	if len(spl.Config.ImageStores) > 1 {
-		log.Warningf("Multiple image stores found. Multiple image stores are not yet supported. Using [%s] %s", imageStoreURL.Host, imageStoreURL.Path)
+		op.Warnf("Multiple image stores found. Multiple image stores are not yet supported. Using [%s] %s", imageStoreURL.Host, imageStoreURL.Path)
 	}
 
 	ds, err := vsphere.NewImageStore(op, handlerCtx.Session, &imageStoreURL)
 	if err != nil {
-		log.Panicf("Cannot instantiate storage layer: %s", err)
+		op.Panicf("Cannot instantiate storage layer: %s", err)
 	}
 
 	// The imagestore is implemented via a cache which is backed via an
@@ -530,7 +530,7 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 	// 	ancestorStore = *params.AncestorStore
 	// }
 
-	op := trace.NewOperation(context.Background(), fmt.Sprintf("ExportArchive (%s, %s)", id, ancestor))
+	op := trace.NewOperation(context.Background(), "ExportArchive (%s, %s)", id, ancestor)
 
 	data := params.Data
 
@@ -539,23 +539,33 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 		op.Infof("Filterspec: %s", *params.FilterSpec)
 	}
 
-	if params.FilterSpec == nil || len(*params.FilterSpec) == 0 {
-		filterSpec = vicarchive.FilterSpec{
-			Inclusions: map[string]struct{}{},
-			Exclusions: map[string]struct{}{},
+	// hickeng: what does an empty filterspec mean? What does the caller *think* it means AND how is it interpreted?
+	if params.FilterSpec != nil && len(*params.FilterSpec) > 0 {
+		decodedSpec, err := base64.StdEncoding.DecodeString(*params.FilterSpec)
+		if err != nil {
+			op.Errorf("Unable to decode filter spec: %s", err)
+			// hickeng: this should really be a 400: Bad Request error
+			return storage.NewImportArchiveInternalServerError()
 		}
-	} else {
-		if decodedSpec, err := base64.StdEncoding.DecodeString(*params.FilterSpec); err == nil {
-			if len(decodedSpec) > 0 {
-				log.Infof("decoded spec = %s", string(decodedSpec))
-				if err = json.Unmarshal(decodedSpec, &filterSpec); err != nil {
-					log.Errorf("Unable to unmarshal decoded spec: %s", err)
-					return storage.NewImportArchiveInternalServerError()
-				}
-			} else {
-				log.Info("** filterSpec is empty")
+		op.Infof("decoded spec: %+s", string(decodedSpec))
+
+		if len(decodedSpec) > 0 {
+			if err = json.Unmarshal(decodedSpec, &filterSpec); err != nil {
+				op.Errorf("Unable to unmarshal decoded spec: %s", err)
+				// hickeng: probably still a 400 instead of 500
+				return storage.NewImportArchiveInternalServerError()
 			}
 		}
+
+		// hickeng: question - again, what does an empty spec mean?
+	}
+
+	// normalize empty spec
+	if filterSpec.Inclusions == nil {
+		filterSpec.Inclusions = make(map[string]struct{})
+	}
+	if filterSpec.Exclusions == nil {
+		filterSpec.Exclusions = make(map[string]struct{})
 	}
 
 	var (
@@ -563,14 +573,22 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 		err error
 	)
 
+	// hickeng: I'm not sure why we're using a pipe here - iirc the main reason we were using pipes was to
+	// allow for cancallation, but we could easily do that here by passing the tarstream directly to NewFlushingReader and:
+	// * supporting cancellation in the Export call
+	// * having vicarchive.Diff return an io.WriterTo
+
 	// Return the data back to the caller
 	pipeReader, pipeWriter := io.Pipe()
 	go func() {
+		// hickeng: Looks like this will all be replaced once we have a consistent Export interface across the store implementations:
+		// 1. get store from URL
+		// 2. call store.Export
 		switch params.Store {
 		case "container":
-			r, err = h.getContainerRWArchive(op, id, ancestor, filterSpec, data)
+			r, err = h.getContainerRWArchive(op, id, ancestor, &filterSpec, data)
 		case "volume":
-			r, err = h.getVolumeArchive(op, id, filterSpec, data)
+			r, err = h.getVolumeArchive(op, id, &filterSpec, data)
 		default:
 			store, _ := util.ImageStoreNameToURL(params.Store)
 
@@ -594,20 +612,25 @@ func (h *StorageHandlersImpl) ExportArchive(params storage.ExportArchiveParams) 
 
 //utility functions
 
-func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ancestor string, spec vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {
-
+func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ancestor string, spec *vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {
 	mounts := []*spl.MountDataSource{}
 
 	l, err := h.containerStore.NewDataSource(op, id)
 	if err != nil {
 		return nil, err
 	}
+
 	mounts = append(mounts, l.(*spl.MountDataSource))
+
+	if ancestor == "" {
+		return l.Export(op, spec, data)
+	}
 
 	r, err := h.imageCache.NewDataSource(op, ancestor)
 	if err != nil {
 		return nil, err
 	}
+
 	mounts = append(mounts, r.(*spl.MountDataSource))
 
 	cleanFunc := func() {
@@ -626,7 +649,7 @@ func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ance
 		return nil, errors.New("Mismatched datasource types")
 	}
 
-	tar, err := vicarchive.Diff(op, fl.Name(), fr.Name(), &spec, data)
+	tar, err := vicarchive.Diff(op, fl.Name(), fr.Name(), spec, data)
 	if err != nil {
 		return nil, err
 	}
@@ -637,7 +660,7 @@ func (h *StorageHandlersImpl) getContainerRWArchive(op trace.Operation, id, ance
 	}, nil
 }
 
-func (h *StorageHandlersImpl) getVolumeArchive(op trace.Operation, id string, spec vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {
+func (h *StorageHandlersImpl) getVolumeArchive(op trace.Operation, id string, spec *vicarchive.FilterSpec, data bool) (io.ReadCloser, error) {
 	l, err := h.volumeCache.NewDataSource(op, id)
 	if err != nil {
 		return nil, err
@@ -650,7 +673,7 @@ func (h *StorageHandlersImpl) getVolumeArchive(op trace.Operation, id string, sp
 		return nil, errors.New("Source must be a file!")
 	}
 
-	return vicarchive.Diff(op, fl.Name(), "", &spec, data)
+	return vicarchive.Diff(op, fl.Name(), "", spec, data)
 }
 
 // convert an SPL Image to a swagger-defined Image
