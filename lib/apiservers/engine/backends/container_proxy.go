@@ -716,7 +716,7 @@ func (c *ContainerProxy) GetContainerChanges(vc *viccontainer.VicContainer) (io.
 		Exclusions: map[string]struct{}{},
 	}
 
-	r, err := c.ArchiveExportReader(context.Background(), host, host, id, parent, true, spec)
+	r, err := c.ArchiveExportReader(context.Background(), host, host, id, parent, false, spec)
 	if err != nil {
 		return nil, InternalServerError(err.Error())
 	}
