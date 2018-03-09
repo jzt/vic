@@ -26,7 +26,6 @@ import (
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/performance"
 	"github.com/vmware/vic/pkg/vsphere/test"
-	"github.com/vmware/vic/pkg/vsphere/vm"
 )
 
 var (
@@ -130,15 +129,11 @@ func TestRankedRecommendHost(t *testing.T) {
 		server.Close()
 	}()
 
-	moref, err := test.CreateVM(op, sess, "test-vm")
-	assert.NoError(t, err)
-
-	v := vm.NewVirtualMachine(op, sess, moref)
-
 	m := MockMetricsProvider{}
 
 	rhp := NewRankedHostPolicy(m)
-	result, err := rhp.RecommendHost(op, v.Session, nil)
+	assert.False(t, rhp.CheckHost(op, sess, &object.VirtualMachine{}))
+	result, err := rhp.RecommendHost(op, sess, nil)
 	assert.NoError(t, err)
 
 	expected := hh.Reference().String()
@@ -155,14 +150,9 @@ func TestRankedRecommendHostWithHosts(t *testing.T) {
 		server.Close()
 	}()
 
-	moref, err := test.CreateVM(op, sess, "test-vm")
-	assert.NoError(t, err)
-
-	v := vm.NewVirtualMachine(op, sess, moref)
-
 	m := MockMetricsProvider{}
 	rhp := NewRankedHostPolicy(m)
-	hosts, err := rhp.RecommendHost(op, v.Session, nil)
+	hosts, err := rhp.RecommendHost(op, sess, nil)
 	assert.NoError(t, err)
 
 	expected := hh.Reference().String()
@@ -171,7 +161,7 @@ func TestRankedRecommendHostWithHosts(t *testing.T) {
 
 	subset := hosts[1:]
 
-	result, err := rhp.RecommendHost(op, v.Session, subset)
+	result, err := rhp.RecommendHost(op, sess, subset)
 	assert.NoError(t, err)
 
 	expected = mh.Reference().String()

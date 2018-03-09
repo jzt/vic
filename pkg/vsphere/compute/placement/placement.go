@@ -23,8 +23,9 @@ import (
 // HostPlacementPolicy defines the interface for using metrics to decide the appropriate host
 // for a VM based on host metrics and VM provisioned resources.
 type HostPlacementPolicy interface {
+	// TODO(jzt): refactor to consider vm resource needs in the future
 	// CheckHost checks whether or not the host a VM was created on is adequate for power-on.
-	CheckHost(trace.Operation, *session.Session) bool
+	CheckHost(trace.Operation, *session.Session, *object.VirtualMachine) bool
 
 	// RecommendHost recommends an adequate host for the supplied VM power-on. If a nil set of hosts is
 	// specified, it will choose from the hosts contained in the cluster in which the VM is located.

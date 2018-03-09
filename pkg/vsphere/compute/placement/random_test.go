@@ -20,9 +20,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/vic/pkg/trace"
 	"github.com/vmware/vic/pkg/vsphere/test"
-	"github.com/vmware/vic/pkg/vsphere/vm"
 )
 
 func TestRandomRecommendHost(t *testing.T) {
@@ -39,14 +39,9 @@ func TestRandomRecommendHost(t *testing.T) {
 	hosts, err := cls.Hosts(op)
 	assert.NoError(t, err)
 
-	moref, err := test.CreateVM(op, sess, "test-vm")
-	assert.NoError(t, err)
-
-	v := vm.NewVirtualMachine(op, sess, moref)
-
 	rhp := NewRandomHostPolicy()
-	assert.False(t, rhp.CheckHost(op, v.Session))
-	h, err := rhp.RecommendHost(op, v.Session, nil)
+	assert.False(t, rhp.CheckHost(op, sess, &object.VirtualMachine{}))
+	h, err := rhp.RecommendHost(op, sess, nil)
 	assert.NoError(t, err)
 
 	top := h[0].Reference().String()
@@ -63,7 +58,7 @@ func TestRandomRecommendHost(t *testing.T) {
 	assert.True(t, found)
 
 	// try with a subset
-	x, err := rhp.RecommendHost(op, v.Session, h)
+	x, err := rhp.RecommendHost(op, sess, h)
 	assert.NoError(t, err)
 	assert.Len(t, x, len(hosts)-1)
 	for _, host := range x {
