@@ -54,19 +54,10 @@ func Commit(op trace.Operation, sess *session.Session, h *Handle, waitTime *int3
 			return fmt.Errorf("a container already exists in the cache with this ID")
 		}
 
-		var res *types.TaskInfo
-		var err error
-		if sess.IsVC() && Config.VirtualApp.ResourcePool != nil {
-			// Create the vm
-			res, err = tasks.WaitForResult(op, func(op context.Context) (tasks.Task, error) {
-				return Config.VirtualApp.CreateChildVM(op, *h.Spec.Spec(), nil)
-			})
-		} else {
-			// Create the vm
-			res, err = tasks.WaitForResult(op, func(op context.Context) (tasks.Task, error) {
-				return sess.VMFolder.CreateVM(op, *h.Spec.Spec(), Config.ResourcePool, nil)
-			})
-		}
+		// Create the vm
+		res, err := tasks.WaitForResult(op, func(op context.Context) (tasks.Task, error) {
+			return sess.VMFolder.CreateVM(op, *h.Spec.Spec(), Config.ResourcePool, nil)
+		})
 
 		if err != nil {
 			op.Errorf("An error occurred while waiting for a creation operation to complete. Spec was %+v", *h.Spec.Spec())

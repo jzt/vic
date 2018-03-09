@@ -69,7 +69,7 @@ func NewRankedHostPolicyWithConfig(s performance.MetricsProvider, wc WeightConfi
 }
 
 // CheckHost returns true if the host has adequate capacity to power on the VM, false otherwise.
-func (r *RankedHostPolicy) CheckHost(op trace.Operation, host *object.HostSystem) bool {
+func (r *RankedHostPolicy) CheckHost(op trace.Operation, sess *session.Session, vm *object.VirtualMachine) bool {
 	// TODO(jzt): return false until we have host checking logic decided
 	return false
 }

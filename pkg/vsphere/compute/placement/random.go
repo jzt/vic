@@ -19,7 +19,6 @@ import (
 
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/vic/pkg/trace"
-	"github.com/vmware/vic/pkg/vsphere/compute"
 	"github.com/vmware/vic/pkg/vsphere/session"
 )
 
@@ -32,21 +31,15 @@ func NewRandomHostPolicy() *RandomHostPolicy {
 }
 
 // CheckHost always returns false in a RandomHostPolicy.
-func (p *RandomHostPolicy) CheckHost(op trace.Operation, sess *session.Session) bool {
+func (p *RandomHostPolicy) CheckHost(op trace.Operation, sess *session.Session, vm *object.VirtualMachine) bool {
 	return false
 }
 
 // RecommendHost recommends a random host on which to place a newly created VM.
 func (p *RandomHostPolicy) RecommendHost(op trace.Operation, sess *session.Session, hosts []*object.HostSystem) ([]*object.HostSystem, error) {
+	var err error
 	if hosts == nil {
-		rp := compute.NewResourcePool(op, sess, sess.Pool.Reference())
-
-		cls, err := rp.GetCluster(op)
-		if err != nil {
-			return nil, err
-		}
-
-		hosts, err = cls.Hosts(op)
+		hosts, err = sess.Cluster.Hosts(op)
 		if err != nil {
 			return nil, err
 		}
