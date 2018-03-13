@@ -258,18 +258,3 @@ func testCreateAppliance(op trace.Operation, sess *session.Session, conf *config
 
 	return d.appliance
 }
-
-func testRelocateAppliance(op trace.Operation, appliance *vm.VirtualMachine, sess *session.Session, conf *config.VirtualContainerHostConfigSpec, vConf *data.InstallerData, t *testing.T) {
-	d := &Dispatcher{
-		session:   sess,
-		op:        op,
-		isVC:      sess.IsVC(),
-		appliance: appliance,
-		force:     false,
-	}
-
-	err := d.relocateAppliance()
-	if err != nil {
-		t.Fatalf("Failed to relocate appliance: %s", err)
-	}
-}
