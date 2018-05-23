@@ -121,6 +121,9 @@ func (ldm *LayerDownloader) DownloadLayers(ctx context.Context, ic *ImageC) erro
 	go progressOutput.run()
 	defer progressOutput.stop()
 
+	// when finished, persist all successfully downloaded layers to vSphere
+	defer layerCache.Save()
+
 	// lock here so that we get all layers in flight before another client comes along
 	ldm.m.Lock()
 

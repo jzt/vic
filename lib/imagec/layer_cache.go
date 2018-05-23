@@ -115,7 +115,7 @@ func (lc *LCache) Remove(id string) {
 }
 
 // Commit marks a layer as downloaded
-func (lc *LCache) Commit(layer *ImageWithMeta) error {
+func (lc *LCache) Commit(layer *ImageWithMeta) {
 	defer trace.End(trace.Begin(""))
 	lc.m.Lock()
 	defer lc.m.Unlock()
@@ -123,8 +123,7 @@ func (lc *LCache) Commit(layer *ImageWithMeta) error {
 	lc.layers[layer.ID] = layer
 	lc.layers[layer.ID].Downloading = false
 	lc.dirty = true
-
-	return lc.save()
+	// return lc.save()
 }
 
 // Get returns a cached layer, or LayerNotFoundError if it doesn't exist
